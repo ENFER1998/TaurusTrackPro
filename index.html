@@ -1818,11 +1818,13 @@
         // =========================================================================
         window.esAnimalArchivado = function(car) {
             if (!car) return false;
-            let c = String(car).toUpperCase();
-            return c.includes('-BAJA-') || c.includes('-VENTA-');
+            let s = String(car).toUpperCase();
+            return s.includes('-BAJA-') || s.includes('-VENTA-');
         };
 
-        window.esAnimalVendido = function(regs, car) {
+        window.esAnimalVendido = function(arg1, arg2) {
+            let regs = Array.isArray(arg1) ? arg1 : (Array.isArray(arg2) ? arg2 : (typeof window.obtenerHistorial === 'function' && typeof arg1 === 'string' ? window.obtenerHistorial(arg1) : []));
+            let car = typeof arg1 === 'string' ? arg1 : (typeof arg2 === 'string' ? arg2 : '');
             if (car && String(car).toUpperCase().includes('-VENTA-')) return true;
             if (!regs || !Array.isArray(regs) || regs.length === 0) return false;
             let evtVenta = regs.find(r => r && (r.accion === 'Venta' || r.accion === 'Despacho'));
@@ -1834,7 +1836,9 @@
             return v.includes('venta') || v.includes('faena') || v.includes('frigorífico') || v.includes('frigorifico') || v.includes('consumo') || v.includes('abigeato') || v.includes('despacho') || d.includes('venta') || d.includes('destino/guía') || d.includes('destino');
         };
 
-        window.esAnimalMuerto = function(regs, car) {
+        window.esAnimalMuerto = function(arg1, arg2) {
+            let regs = Array.isArray(arg1) ? arg1 : (Array.isArray(arg2) ? arg2 : (typeof window.obtenerHistorial === 'function' && typeof arg1 === 'string' ? window.obtenerHistorial(arg1) : []));
+            let car = typeof arg1 === 'string' ? arg1 : (typeof arg2 === 'string' ? arg2 : '');
             if (car && String(car).toUpperCase().includes('-BAJA-')) return true;
             if (!regs || !Array.isArray(regs) || regs.length === 0) return false;
             let evtMuerte = regs.find(r => r && (r.accion === 'Baja' || r.accion === 'Muerte'));
@@ -1842,9 +1846,10 @@
             return !window.esAnimalVendido(regs, car);
         };
 
-        window.esAnimalVivo = function(regs, car) {
+        window.esAnimalVivo = function(arg1, arg2) {
+            let car = typeof arg1 === 'string' ? arg1 : (typeof arg2 === 'string' ? arg2 : '');
             if (car && window.esAnimalArchivado(car)) return false;
-            return !window.esAnimalMuerto(regs, car) && !window.esAnimalVendido(regs, car);
+            return !window.esAnimalMuerto(arg1, arg2) && !window.esAnimalVendido(arg1, arg2);
         };
 
 window.esCaravanaValida = function(car) {

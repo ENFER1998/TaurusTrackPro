@@ -2067,11 +2067,13 @@
         // =========================================================================
         function esAnimalArchivado(car) {
             if (!car) return false;
-            let c = String(car).toUpperCase();
-            return c.includes('-BAJA-') || c.includes('-VENTA-');
+            let s = String(car).toUpperCase();
+            return s.includes('-BAJA-') || s.includes('-VENTA-');
         }
 
-        function esAnimalVendido(regs, car) {
+        function esAnimalVendido(arg1, arg2) {
+            let regs = Array.isArray(arg1) ? arg1 : (Array.isArray(arg2) ? arg2 : (typeof obtenerHistorial === 'function' && typeof arg1 === 'string' ? obtenerHistorial(arg1) : []));
+            let car = typeof arg1 === 'string' ? arg1 : (typeof arg2 === 'string' ? arg2 : '');
             if (car && String(car).toUpperCase().includes('-VENTA-')) return true;
             if (!regs || !Array.isArray(regs) || regs.length === 0) return false;
             let evtVenta = regs.find(r => r && (r.accion === 'Venta' || r.accion === 'Despacho'));
@@ -2083,7 +2085,9 @@
             return v.includes('venta') || v.includes('faena') || v.includes('frigorífico') || v.includes('frigorifico') || v.includes('consumo') || v.includes('abigeato') || v.includes('despacho') || d.includes('venta') || d.includes('destino/guía') || d.includes('destino');
         }
 
-        function esAnimalMuerto(regs, car) {
+        function esAnimalMuerto(arg1, arg2) {
+            let regs = Array.isArray(arg1) ? arg1 : (Array.isArray(arg2) ? arg2 : (typeof obtenerHistorial === 'function' && typeof arg1 === 'string' ? obtenerHistorial(arg1) : []));
+            let car = typeof arg1 === 'string' ? arg1 : (typeof arg2 === 'string' ? arg2 : '');
             if (car && String(car).toUpperCase().includes('-BAJA-')) return true;
             if (!regs || !Array.isArray(regs) || regs.length === 0) return false;
             let evtMuerte = regs.find(r => r && (r.accion === 'Baja' || r.accion === 'Muerte'));
@@ -2091,9 +2095,10 @@
             return !esAnimalVendido(regs, car);
         }
 
-        function esAnimalVivo(regs, car) {
+        function esAnimalVivo(arg1, arg2) {
+            let car = typeof arg1 === 'string' ? arg1 : (typeof arg2 === 'string' ? arg2 : '');
             if (car && esAnimalArchivado(car)) return false;
-            return !esAnimalMuerto(regs, car) && !esAnimalVendido(regs, car);
+            return !esAnimalMuerto(arg1, arg2) && !esAnimalVendido(arg1, arg2);
         }
 
         window.esAnimalArchivado = esAnimalArchivado;
