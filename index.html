@@ -1813,7 +1813,41 @@
         // =========================================================================
         // MOTOR DE PROCESAMIENTO GANADERO Y EVENTOS CLÍNICOS
         // =========================================================================
-        window.esCaravanaValida = function(car) {
+                // =========================================================================
+        // HELPERS UNIVERSALES: ESTADOS DE GANADO (VIVOS, MUERTES Y VENTAS)
+        // =========================================================================
+        window.esAnimalArchivado = function(car) {
+            if (!car) return false;
+            let c = String(car).toUpperCase();
+            return c.includes('-BAJA-') || c.includes('-VENTA-');
+        };
+
+        window.esAnimalVendido = function(regs, car) {
+            if (car && String(car).toUpperCase().includes('-VENTA-')) return true;
+            if (!regs || !Array.isArray(regs) || regs.length === 0) return false;
+            let evtVenta = regs.find(r => r && (r.accion === 'Venta' || r.accion === 'Despacho'));
+            if (evtVenta) return true;
+            let evtBaja = regs.find(r => r && r.accion === 'Baja');
+            if (!evtBaja) return false;
+            let v = String(evtBaja.valor || "").toLowerCase();
+            let d = String(evtBaja.detalles || "").toLowerCase();
+            return v.includes('venta') || v.includes('faena') || v.includes('frigorífico') || v.includes('frigorifico') || v.includes('consumo') || v.includes('abigeato') || v.includes('despacho') || d.includes('venta') || d.includes('destino/guía') || d.includes('destino');
+        };
+
+        window.esAnimalMuerto = function(regs, car) {
+            if (car && String(car).toUpperCase().includes('-BAJA-')) return true;
+            if (!regs || !Array.isArray(regs) || regs.length === 0) return false;
+            let evtMuerte = regs.find(r => r && (r.accion === 'Baja' || r.accion === 'Muerte'));
+            if (!evtMuerte) return false;
+            return !window.esAnimalVendido(regs, car);
+        };
+
+        window.esAnimalVivo = function(regs, car) {
+            if (car && window.esAnimalArchivado(car)) return false;
+            return !window.esAnimalMuerto(regs, car) && !window.esAnimalVendido(regs, car);
+        };
+
+window.esCaravanaValida = function(car) {
             if (car === null || car === undefined) return false;
             let s = String(car).trim();
             if (!s || s === "" || s === "---") return false;
