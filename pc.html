@@ -3372,7 +3372,7 @@ function procesarEventos() {
             let potrero = document.getElementById('input-potrero-rapido') ? document.getElementById('input-potrero-rapido').value.trim() : "";
             let carimbo = document.getElementById('input-carimbo-rapido').value || "-";
             let detLote = `Lote: ${lote}` + (potrero ? ` | Potrero: ${potrero}` : "");
-            ejecutarAccion('Actualización de Datos', `Cat: ${cat} | Carimbo: ${carimbo}`, detLote, 'm-clasi'); 
+            ejecutarAccion('Actualización de Datos', `Cat: ${cat} | Carimbo: ${carimbo}`, detLote, 'modal-clasificacion');
         }
         
         // =========================================================================
@@ -3692,7 +3692,7 @@ function procesarEventos() {
         };
         function buscarCaravanaBtn(caravanaParam) { return window.buscarCaravanaBtn(caravanaParam); }
 
-        function guardarCambioCaravana() { const n = document.getElementById('f-nueva-caravana').value.trim(); if(!n || n === rpActivo) { alert("Número inválido."); return; } ejecutarAccion('Cambio de Caravana', n, `Renombrado`, 'm-renombrar'); document.getElementById('f-nueva-caravana').value = ''; setTimeout(() => { rpActivo = n; buscarCaravanaBtn(n); }, 300); }
+        function guardarCambioCaravana() { const n = document.getElementById('f-nueva-caravana').value.trim(); if(!n || n === rpActivo) { alert("Número inválido."); return; } ejecutarAccion('Cambio de Caravana', n, `Renombrado`, 'modal-renombrar'); document.getElementById('f-nueva-caravana').value = ''; setTimeout(() => { rpActivo = n; buscarCaravanaBtn(n); }, 300); }
         function borrarCaravana() { if(!rpActivo) return; if(confirm(`¿ELIMINAR todo el historial de la caravana ${rpActivo}?`)) { ejecutarAccion('Borrar_Caravana', 'Eliminado', 'Se borró el historial de este tag', null); alert("Historial eliminado. El número quedó libre."); cambiarVista('v-dash', document.querySelectorAll('.sidebar-nav li')[0]); } }
                 function calcularDiasCalendario(fecha1, fecha2) {
             if (!fecha1 || !fecha2) return 1;
@@ -5050,7 +5050,7 @@ function procesarEventos() {
             }
         }
     } function cerrarModal(id) { const m = document.getElementById(id); if (m) { m.classList.add('oculto'); m.style.display = 'none'; } }
-window.cerrarModal = cerrarModal;
+window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
         
 
         let timeoutBuscadorRegistro = null;
@@ -6061,14 +6061,14 @@ window.cerrarModal = cerrarModal;
     // =========================================================================
     // MÓDULO ADMINISTRADOR MASTER PC (UNIFICADO EN TAURUS TRACK PRO PC)
     // =========================================================================
-    // let clientesCache = [];
-    // let datosArchivoCrudo = [];
-    // let unsubscribeConfig = null;
-    // let lastBatch = null;
-    // let mapaEstancias = {};
-    // let eventosMasivosCache = [];
-    // let lotesDetectados = [];
-    // let eventosFiltrados = [];
+    let clientesCache = [];
+    let datosArchivoCrudo = [];
+    var unsubscribeConfig = null;
+    let lastBatch = null;
+    let mapaEstancias = {};
+    let eventosMasivosCache = [];
+    let lotesDetectados = [];
+    let eventosFiltrados = [];
 
     function toggleLoading(show, text="Procesando...") { 
         const el = document.getElementById('loading-overlay');
@@ -6360,7 +6360,7 @@ window.cerrarModal = cerrarModal;
                 const snapshot = await db.collection('usuarios').where('rol', '==', 'Propietario').get();
                 
                 // Consultar colección 'estancias' para obtener nombres de estancia actualizados por los clientes
-                // let mapaEstancias = {};
+                let mapaEstancias = {};
                 try {
                     const snapEstancias = await db.collection('estancias').get();
                     snapEstancias.forEach(edoc => {
@@ -7453,7 +7453,7 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
 
         // Anclajes Globales
         window.ingresarAdmin = ingresarAdmin; window.cerrarSesion = cerrarSesion; window.cambiarVista = cambiarVista;
-        window.cerrarModal = cerrarModal; window.toggleMantenimiento = toggleMantenimiento; window.enviarAvisoMantenimiento = enviarAvisoMantenimiento;
+        window.cerrarModal = cerrarModal; window.toggleTema = toggleTema; window.toggleMantenimiento = toggleMantenimiento; window.enviarAvisoMantenimiento = enviarAvisoMantenimiento;
         window.crearCliente = crearCliente; window.cargarClientes = cargarClientes; window.actualizarVencimiento = actualizarVencimiento;
         window.cambiarClaveMaestroGhost = cambiarClaveMaestroGhost; window.borrarUsuarioMaestroGhost = borrarUsuarioMaestroGhost;
         window.abrirEdicion = abrirEdicion; window.guardarEdicion = guardarEdicion; window.verEquipo = verEquipo;
@@ -7470,3 +7470,33 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
 </script>
 </body>
 </html>
+<script>
+function actualizarUIKillSwitch(estado) {
+    const btn = document.getElementById('btn-kill-switch');
+    if(btn) {
+        if(estado === 'ON') {
+            btn.innerHTML = '🛡️ DESACTIVAR Modo Mantenimiento';
+            btn.style.background = 'var(--danger)';
+            btn.dataset.estado = 'ON';
+        } else {
+            btn.innerHTML = '🛡️ ACTIVAR Modo Mantenimiento';
+            btn.style.background = 'var(--primary)';
+            btn.dataset.estado = 'OFF';
+        }
+    }
+}
+</script>
+<script>
+async function enviarAvisoMantenimiento() {
+    const texto = document.getElementById('txt-aviso-mant').value.trim();
+    if (!texto) {
+        alert("Escribe un aviso");
+        return;
+    }
+    const db = firebase.firestore();
+    await db.collection('sistema').doc('config').update({
+        alerta_global: texto
+    });
+}
+window.enviarAvisoMantenimiento = enviarAvisoMantenimiento;
+</script>
