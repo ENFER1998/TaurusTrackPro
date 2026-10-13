@@ -5878,6 +5878,11 @@ window.esCaravanaValida = function(car) {
 
     // =========================================================================
     // MÓDULO ADMINISTRADOR MASTER (UNIFICADO EN TAURUS TRACK PRO)
+var clientesCache = [];
+var eventosMasivosCache = [];
+var eventosFiltrados = [];
+var unsubscribeConfig = null;
+var mapaEstancias = {};
     // =========================================================================
 
 
@@ -6652,8 +6657,8 @@ window.esCaravanaValida = function(car) {
         // ==========================================
         // GESTIÓN Y EDICIÓN DE CARGAS MASIVAS
         // ==========================================
-        let eventosMasivosCache = [];
-        let eventosFiltrados = [];
+        // let eventosMasivosCache = [];
+        // let eventosFiltrados = [];
 
         function inicializarModuloEditarMasiva() {
             const sel = document.getElementById('sel-hacienda-editar');
@@ -7072,3 +7077,32 @@ Se encontraron ${matches.length} registro(s) de "${caravanaRP}".
 </script>
 </body>
 </html>
+<script>
+async function enviarAvisoMantenimiento() {
+    const texto = document.getElementById('txt-aviso-mant').value.trim();
+    if (!texto) {
+        alert("Escribe un aviso");
+        return;
+    }
+    const db = firebase.firestore();
+    await db.collection('sistema').doc('config').update({
+        alerta_global: texto
+    });
+}
+function actualizarUIKillSwitch(estado) {
+    const btn = document.getElementById('btn-kill-switch');
+    if(btn) {
+        if(estado === 'ON') {
+            btn.innerHTML = '🛡️ DESACTIVAR Modo Mantenimiento';
+            btn.style.background = 'var(--peligro)';
+            btn.dataset.estado = 'ON';
+        } else {
+            btn.innerHTML = '🛡️ ACTIVAR Modo Mantenimiento';
+            btn.style.background = 'var(--primario)';
+            btn.dataset.estado = 'OFF';
+        }
+    }
+}
+window.enviarAvisoMantenimiento = enviarAvisoMantenimiento;
+window.actualizarUIKillSwitch = actualizarUIKillSwitch;
+</script>
