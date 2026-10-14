@@ -670,9 +670,10 @@
             font-size: 12px;
             font-weight: 700;
             color: var(--texto);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            white-space: normal;
+            overflow-wrap: break-word;
+            word-break: break-word;
+            line-height: 1.32;
         }
 
         /* MENÚ DESPLEGABLE FLOTANTE (POPOVER) EN LOS TRES PUNTITOS ⋮ */
@@ -766,7 +767,7 @@
         /* 3 TARJETAS KPI DEL DASHBOARD ESTILO FICHA */
         .dash-kpis-row {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
             gap: 10px;
             margin-bottom: 14px;
         }
@@ -1144,8 +1145,16 @@
                     </div>
                 </div>
 
-                <!-- 3 TARJETAS KPI CON ICONOS VECTORIALES DUOTONO -->
+                <!-- 4 TARJETAS KPI CON ICONOS VECTORIALES DUOTONO (INCLUYE CONFINAMIENTO) -->
                 <div class="dash-kpis-row">
+                    <div class="dash-kpi-card" onclick="filtrarDesdeDashboard('estado', 'confinamiento')">
+                        <svg viewBox="0 0 32 32" width="26" height="26" fill="none">
+                            <rect x="3" y="5" width="26" height="22" rx="6" fill="#f97316" fill-opacity="0.18"/>
+                            <path d="M6 7V25M26 7V25M6 11H26M6 16H26M6 21H26M12 11V21M20 11V21" stroke="#fb923c" stroke-width="1.8" stroke-linecap="round"/>
+                        </svg>
+                        <div class="dash-kpi-lbl">Confinamiento:</div>
+                        <div class="dash-kpi-num" id="dash-confinamiento" style="color:#fb923c;">0</div>
+                    </div>
                     <div class="dash-kpi-card" onclick="filtrarDesdeDashboard('estado', 'ventas')">
                         <svg viewBox="0 0 32 32" width="26" height="26" fill="none">
         <rect x="2" y="2" width="28" height="28" rx="8" fill="#38bdf8" fill-opacity="0.16"/>
@@ -1457,6 +1466,7 @@
                         <div style="display:flex; gap:6px;">
                             <select id="filtro-reg-estado" class="form-control" style="display:none;" onchange="cargarListaRegistro()">
                                 <option value="vivos">Vivos</option>
+                                <option value="confinamiento">En Confinamiento</option>
                                 <option value="bajas">Muertes</option>
                                 <option value="ventas">Ventas</option>
                                 <option value="todos">Todos</option>
@@ -1823,6 +1833,7 @@
                         <label style="display:flex; gap:10px; cursor:pointer;"><input type="checkbox" class="chk-graf" value="9" onchange="verificarLimiteGraficos(this)"><span>9. Promedios</span></label>
                         <label style="display:flex; gap:10px; cursor:pointer;"><input type="checkbox" class="chk-graf" value="10" onchange="verificarLimiteGraficos(this)"><span>10. Volumen</span></label>
                         <label style="display:flex; gap:10px; cursor:pointer;"><input type="checkbox" class="chk-graf" value="11" onchange="verificarLimiteGraficos(this)"><span>11. Causas de Baja / Mortalidad</span></label>
+                        <label style="display:flex; gap:10px; cursor:pointer;"><input type="checkbox" class="chk-graf" value="12" onchange="verificarLimiteGraficos(this)"><span>12. Confinamiento / Feedlot por Corral</span></label>
                     </div>
                 </div>
 
@@ -4006,6 +4017,60 @@ window.esCaravanaValida = function(car) {
         // =========================================================================
         // MOTOR DE RENDERIZADO COMPLETO DE FICHA CLÍNICA GANADERA (MANGA / BRETE)
         // =========================================================================
+        
+        window.formatearDetalleSanidadFicha = function(uSani) {
+            if (!uSani) return "-";
+            let prod = String(uSani.valor || "Tratamiento").trim();
+            let fechaSani = "";
+            try {
+                if (uSani.fecha) fechaSani = new Date(uSani.fecha).toLocaleDateString();
+            } catch(e) {}
+
+            let rawDet = String(uSani.detalles || "").trim();
+            // Quitar etiquetas internas de sistema como [RETIRO:21], [RECORDATORIO:30], (Importación Masiva)
+            let det = rawDet
+                .replace(/\|?\s*\[RETIRO:[^\]]*\]/gi, "")
+                .replace(/\|?\s*\[RECORDATORIO:[^\]]*\]/gi, "")
+                .replace(/\(Importación Masiva\)/gi, "")
+                .trim();
+
+            // Extraer partes significativas (Dosis/Lote, Notas, Vía o texto libre)
+            let partesLimpias = [];
+            if (det && det !== "-" && det.toLowerCase() !== "sin notas" && det.toLowerCase() !== "sin observaciones") {
+                // Separar por '|' primero
+                let bloques = det.split("|").map(s => s.trim()).filter(Boolean);
+                bloques.forEach(b => {
+                    // Si tiene formato "Lote/Dosis: X. Notas: Y"
+                    if (b.includes("Notas:")) {
+                        let sub = b.split(/\.?\s*Notas:/i);
+                        let p1 = sub[0] ? sub[0].replace(/^(Lote\/Dosis|Dosis\/Detalle|Dosis\/Lote|Dosis|Lote)\s*:\s*/i, "").trim().replace(/\.$/, "") : "";
+                        let p2 = sub[1] ? sub[1].trim().replace(/\.$/, "") : "";
+                        if (p1 && p1 !== "-" && p1.toLowerCase() !== "s/d" && p1.toLowerCase() !== "general") {
+                            partesLimpias.push(p1);
+                        }
+                        if (p2 && p2 !== "-" && p2.toLowerCase() !== "sin notas" && p2.toLowerCase() !== "sin observaciones") {
+                            partesLimpias.push(p2);
+                        }
+                    } else {
+                        let limpio = b
+                            .replace(/^(Dosis\/Detalle|Lote\/Dosis|Dosis\/Lote)\s*:\s*/i, "")
+                            .trim()
+                            .replace(/\.$/, "");
+                        if (limpio && limpio !== "-" && !/^Lote:\s*General$/i.test(limpio) && limpio.toLowerCase() !== "sin notas") {
+                            partesLimpias.push(limpio);
+                        }
+                    }
+                });
+            }
+
+            let notaFinal = partesLimpias.join(" · ").trim();
+            let cabecera = `${prod}${fechaSani ? " (" + fechaSani + ")" : ""}`;
+            if (notaFinal && notaFinal.toLowerCase() !== prod.toLowerCase()) {
+                return `${cabecera} — ${notaFinal}`;
+            }
+            return cabecera;
+        };
+
         window.buscarCaravanaBtn = function(caravanaParam) {
             if (typeof window.aplicarDisenoEnPantalla === 'function') window.aplicarDisenoEnPantalla();
             let rp = (typeof caravanaParam === 'string' && caravanaParam.trim()) 
@@ -4206,7 +4271,7 @@ window.esCaravanaValida = function(car) {
 
             if (uSani) {
                 let fechaSani = uSani.fecha ? new Date(uSani.fecha).toLocaleDateString() : "";
-                if (elSanidad) elSanidad.innerText = `${uSani.valor || 'Tratamiento'} (${fechaSani})`;
+                if (elSanidad) elSanidad.innerText = window.formatearDetalleSanidadFicha(uSani);
 
                 let detSani = String(uSani.detalles || "");
                 if (detSani.includes('[RETIRO:') && uSani.fecha) {
@@ -5616,16 +5681,23 @@ window.esCaravanaValida = function(car) {
             if (typeof window.aplicarDisenoEnPantalla === 'function') window.aplicarDisenoEnPantalla();
             const datosActivos = window.obtenerRegistrosActivos().filter(d =>window.esEventoGanaderoValido(d)); 
             let unicas = [...new Set(datosActivos.map(d =>String(d.caravana)).filter(c =>window.esCaravanaValida(c)))];
-            let vivas = unicas.filter(car =>window.esAnimalVivo(window.obtenerHistorial(car)));
-            let cantMuertes = unicas.filter(car =>window.esAnimalMuerto(window.obtenerHistorial(car))).length;
-            let cantVentas = unicas.filter(car =>window.esAnimalVendido(window.obtenerHistorial(car))).length;
+            let todasCarDB = [...new Set((dbCache || []).map(d => String(d.caravana || '')).filter(c => window.esCaravanaValida(c)))];
+            let vivas = unicas.filter(car => !window.esAnimalArchivado(car) && window.esAnimalVivo(window.obtenerHistorial(car), car));
+            let cantMuertes = todasCarDB.filter(car => window.esAnimalMuerto(window.obtenerHistorial(car), car) && (!window.esAnimalVendido(window.obtenerHistorial(car), car) || car.includes('-BAJA-'))).length;
+            let cantVentas = todasCarDB.filter(car => window.esAnimalVendido(window.obtenerHistorial(car), car)).length;
+            let cantConfinamiento = vivas.filter(car => {
+                const rC = window.obtenerHistorial(car);
+                const uCf = rC.find(d => d && d.accion === 'Confinamiento');
+                return Boolean(uCf && !String(uCf.valor || '').includes('Salida'));
+            }).length;
             let cantBajas = cantMuertes;
             unicas = vivas;
-            
-            document.getElementById('dash-cabezas').innerText = vivas.length; 
+
+            document.getElementById('dash-cabezas').innerText = vivas.length;
             document.getElementById('dash-acciones').innerText = datosActivos.length;
             let elBajas = document.getElementById('dash-bajas'); if(elBajas) elBajas.innerText = cantMuertes;
             let elVentas = document.getElementById('dash-ventas'); if(elVentas) elVentas.innerText = cantVentas;
+            let elConfDash = document.getElementById('dash-confinamiento'); if(elConfDash) elConfDash.innerText = cantConfinamiento;
 
             if(datosActivos.length === 0) { document.getElementById('contenedor-graficos-dinamicos').innerHTML = "<p style='color:var(--muted); text-align:center; padding:20px;'>Inventario vacío.</p>"; return; }
             
@@ -5870,10 +5942,13 @@ window.esCaravanaValida = function(car) {
 
             unicas.forEach(car =>{
                 const regs = window.obtenerHistorial(car);
-                let esMuerto = window.esAnimalMuerto(regs);
-                let esVendido = window.esAnimalVendido(regs);
+                let esMuerto = window.esAnimalMuerto(regs, car);
+                let esVendido = window.esAnimalVendido(regs, car);
+                let uConfReg = regs.find(d => d && d.accion === 'Confinamiento');
+                let enConfActivo = Boolean(uConfReg && !String(uConfReg.valor || '').includes('Salida') && !esMuerto && !esVendido && !window.esAnimalArchivado(car));
 
-                if (estadoFiltro === 'vivos' && (esMuerto || esVendido)) return;
+                if (estadoFiltro === 'vivos' && (esMuerto || esVendido || window.esAnimalArchivado(car))) return;
+                if (estadoFiltro === 'confinamiento' && !enConfActivo) return;
                 if (estadoFiltro === 'bajas' && !esMuerto) return;
                 if (estadoFiltro === 'ventas' && !esVendido) return;
 
@@ -9445,7 +9520,7 @@ Se encontraron ${matches.length} registro(s) de "${caravanaRP}".
 
                     doc.setFontSize(8.5);
                     doc.setTextColor(148, 163, 184);
-                    doc.text(`Emision: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}  |  Taurus Track Pro AgTech`, 14, 28.5);
+                    doc.text(`Emision: ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString()}  |  Taurus Track Pro`, 14, 28.5);
 
                     if (h_log && h_log.startsWith('data:image')) {
                         try {
