@@ -1098,6 +1098,52 @@
             font-weight: 600;
         }
 
+    
+        /* === DESPLEGABLE FLOTANTE (POPOVER) Y BARRA MANUAL PARA MODO RÁFAGA === */
+        .search-rafaga-row {
+            position: relative !important;
+            flex-wrap: wrap !important;
+        }
+        .popover-rafaga {
+            position: absolute !important;
+            top: calc(100% + 8px) !important;
+            right: 0 !important;
+            width: 100% !important;
+            max-width: 420px !important;
+            background: var(--popover-bg, #1e293b) !important;
+            border: 1.5px solid rgba(16, 185, 129, 0.45) !important;
+            border-radius: 18px !important;
+            padding: 14px 15px !important;
+            box-shadow: 0 22px 48px rgba(0, 0, 0, 0.65) !important;
+            z-index: 650 !important;
+            box-sizing: border-box !important;
+        }
+        .popover-rafaga.modo-barra-manual {
+            position: static !important;
+            flex: 0 0 100% !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            margin-top: 6px !important;
+            padding: 10px 12px !important;
+            border-radius: 14px !important;
+            box-shadow: var(--card-shadow) !important;
+            z-index: 10 !important;
+        }
+        body.tema-claro .popover-rafaga {
+            background: #ffffff !important;
+            border: 1.5px solid rgba(16, 185, 129, 0.55) !important;
+            box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18) !important;
+        }
+        body.tema-claro .popover-rafaga.modo-barra-manual {
+            box-shadow: 0 4px 14px rgba(15, 23, 42, 0.08) !important;
+        }
+        .rafaga-pill-btn.activo {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+            color: #ffffff !important;
+            border-color: transparent !important;
+            box-shadow: 0 4px 14px rgba(16, 185, 129, 0.4) !important;
+        }
+
     </style>
     <!-- PRECALENTAR ALMACENAMIENTO LOCAL CACHESTORAGE PARA PC -->
     <script>
@@ -1268,98 +1314,127 @@
         <div id="v-ficha" class="vista oculto">
             <h2 class="titulo-seccion">Expediente Clínico Individual</h2>
             
-            <div id="tarjeta-rafaga" class="tarjeta" style="margin-bottom: 12px; padding: 12px 18px; border-left: 4px solid var(--primary); background: var(--bg-card);">
-                <div style="display:flex; justify-content:space-between; align-items:center;">
-                    <div style="display:flex; align-items:center; gap:10px;">
-                        <span style="font-size:20px;"></span>
-                        <div>
-                            <strong style="display:block; color:var(--text-main); font-size:13px;">Modo Ráfaga</strong>
-                            <span style="font-size:11px; color:var(--text-muted);">Carga ultrarrápida manual por teclado o automática por antena</span>
+                            <!-- BARRA SUPERIOR UNIFICADA: BUSCADOR PILL + BOTÓN RÁFAGA CON DESPLEGABLE FLOTANTE -->
+                <div class="search-rafaga-row" id="contenedor-barra-rafaga">
+                    <div class="search-pill-box">
+                        <span style="color:var(--muted); display:flex; align-items:center;"><svg class="ui-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+                        <input type="text" id="buscador-caravana" placeholder="Buscar RP..." autocomplete="off" onkeyup="if(event.key === 'Enter') buscarCaravanaBtn()">
+                        <button type="button" class="search-pill-btn" onclick="buscarCaravanaBtn()">Buscar</button>
+                    </div>
+                    <button type="button" id="btn-toggle-rafaga" class="rafaga-pill-btn" onclick="event.stopPropagation(); window.toggleRafaga();">
+                        <svg class="ui-ico" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+                        <span id="lbl-btn-rafaga">Ráfaga</span>
+                    </button>
+
+                    <!-- DESPLEGABLE FLOTANTE DE MODO RÁFAGA (EN BLUETOOTH QUEDA SOLO EL BOTÓN ENCENDIDO; EN MANUAL DEJA LA BARRA DE RP + PESO + APLICAR) -->
+                    <div class="popover-rafaga oculto" id="tarjeta-rafaga" onclick="event.stopPropagation();">
+                        <div id="cabecera-config-rafaga" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--borde);">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <span style="width:8px; height:8px; border-radius:50%; background:#10b981; display:inline-block; box-shadow:0 0 8px #10b981;"></span>
+                                <strong style="font-size:13.5px; color:var(--texto); font-weight:800;">Configuración Modo Ráfaga</strong>
+                            </div>
+                            <button type="button" class="btn-mini" style="padding:3px 9px; font-size:11px;" onclick="window.guardarYOcultarRafaga()" title="Guardar configuración">Listo</button>
+                        </div>
+
+                        <!-- BARRA SIEMPRE VISIBLE EN MODO CARGA RÁPIDA (TECLADO MANUAL): Nº RP + PESO + APLICAR -->
+                        <div id="caja-rafaga-manual" style="display:flex; flex-direction:column; gap:6px; background:var(--superficie-sub); padding:8px; border-radius:10px; border:1px solid var(--borde);">
+                            <div id="barra-estado-rafaga-manual" class="oculto" style="display:flex; justify-content:space-between; align-items:center; gap:6px; padding-bottom:4px; border-bottom:1px solid var(--borde);">
+                                <div style="display:flex; align-items:center; gap:6px; min-width:0;">
+                                    <span style="width:7px; height:7px; border-radius:50%; background:#10b981; flex-shrink:0; box-shadow:0 0 6px #10b981;"></span>
+                                    <span id="lbl-resumen-rafaga-manual" style="font-size:11px; font-weight:700; color:var(--exito); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">Carga Rápida Manual</span>
+                                </div>
+                                <div style="display:flex; gap:5px; flex-shrink:0;">
+                                    <button type="button" class="btn-mini" style="padding:2px 8px; font-size:10.5px;" onclick="window.abrirConfigRafaga()">Configurar</button>
+                                    <button type="button" class="btn-mini" style="padding:2px 8px; font-size:10.5px; color:#ef4444; border-color:rgba(239,68,68,0.35);" onclick="window.apagarModoRafaga()">Apagar</button>
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:6px; align-items:center; width:100%;">
+                                <input type="text" id="rm-caravana" class="form-control" placeholder="Nº RP (Obligatorio)" style="flex:1.1; min-width:0; padding:4px 8px; font-size:12.5px; height:34px; margin:0; font-weight:bold;" onkeyup="if(event.key === 'Enter') ejecutarRafagaManual()">
+                                <input type="number" step="0.5" id="rm-valor" class="form-control" placeholder="Peso Kg (Opc.)" style="flex:0.9; min-width:0; padding:4px 8px; font-size:12px; height:34px; margin:0;" onkeyup="if(event.key === 'Enter') ejecutarRafagaManual()">
+                                <button type="button" class="btn-mini" style="background:var(--exito) !important; color:white !important; border:none !important; padding:0 12px; height:34px; flex-shrink:0; font-weight:700;" onclick="ejecutarRafagaManual()">Aplicar</button>
+                            </div>
+                        </div>
+
+                        <div id="opciones-rafaga" style="margin-top:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; padding:8px 10px; background:var(--superficie-sub); border-radius:10px; border:1px solid var(--borde);">
+                                <span id="lbl-estado-bluetooth" style="font-size:11px; font-weight:700; color:var(--muted);">Bluetooth: Desconectado</span>
+                                <button type="button" class="btn-mini" id="btn-conectar-ble" style="background:var(--secundario) !important; color:white !important; border:none !important; padding:5px 10px; font-size:11px;" onclick="conectarBluetoothBLE()">Conectar Bastón / Balanza</button>
+                            </div>
+
+                            <div style="display:flex; gap:6px; margin-bottom:8px; align-items:center;">
+                                <span style="font-size:11px; font-weight:700; color:var(--muted); white-space:nowrap;">Modo:</span>
+                                <select id="rafaga-modalidad" class="form-control" style="padding:4px 8px; font-size:12px; height:34px; margin:0;" onchange="verificarRafagaCustom()">
+                                    <option value="manual" selected>Carga Rápida (Teclado Manual)</option>
+                                    <option value="rfid">Antena / Bastón RFID / Balanza Bluetooth</option>
+                                </select>
+                            </div>
+
+                            <div style="display:flex; gap:6px; margin-bottom:6px;">
+                                <div style="flex:1; min-width:0;">
+                                    <label style="font-size:10.5px; font-weight:700; color:var(--muted); display:block; margin-bottom:3px;">Acción / Tratamiento en Ráfaga:</label>
+                                    <select id="rafaga-accion" class="form-control" style="padding:4px 8px; font-size:12px; height:34px; margin:0; font-weight:600;" onchange="verificarRafagaCustom()">
+                                        <option value="solo_peso">Solo Peso (Balanza)</option>
+                                        <option value="Vacuna Aftosa" selected>Vacuna Aftosa</option>
+                                        <option value="Vacuna Carbunclo">Vacuna Carbunclo</option>
+                                        <option value="Antiparasitario (Ivermectina)">Antiparasitario (Ivermectina)</option>
+                                        <option value="Vitamina ADE">Vitamina ADE</option>
+                                        <option value="Antibiótico / Curación">Antibiótico / Curación</option>
+                                        <option value="tacto">Tacto / Diagnóstico</option>
+                                        <option value="OTRO">Otro tratamiento...</option>
+                                    </select>
+                                    <input type="text" id="rafaga-prod-custom" class="form-control oculto" placeholder="Escribir producto o tratamiento..." style="margin-top:6px; padding:4px 8px; font-size:11.5px; height:30px;">
+                                </div>
+                            </div>
+
+                            <div id="caja-rafaga-sanidad-detalles" style="display:flex; flex-direction:column; gap:6px; margin-bottom:8px; background:var(--superficie-sub); padding:8px; border-radius:10px; border:1px solid var(--borde);">
+                                <div style="display:flex; gap:6px;">
+                                    <input type="text" id="rafaga-lote-dosis" class="form-control" placeholder="Lote / Dosis (Ej: 5ml)" style="flex:1; min-width:0; padding:4px 8px; font-size:11px; height:30px; margin:0;">
+                                    <select id="rafaga-via" class="form-control" style="flex:1; min-width:0; padding:2px 6px; font-size:11px; height:30px; margin:0;">
+                                        <option value="Subcutánea">Vía: Subcutánea</option>
+                                        <option value="Intramuscular">Vía: Intramuscular</option>
+                                        <option value="Pour-on">Vía: Pour-on</option>
+                                        <option value="Oral">Vía: Oral</option>
+                                    </select>
+                                </div>
+                                <div style="display:flex; gap:6px;">
+                                    <select id="rafaga-retiro" class="form-control" style="flex:1; min-width:0; padding:2px 6px; font-size:11px; height:30px; margin:0;">
+                                        <option value="0">Retiro: 0 días</option>
+                                        <option value="14">Retiro faena: 14 días</option>
+                                        <option value="28">Retiro faena: 28 días</option>
+                                        <option value="35">Retiro faena: 35 días</option>
+                                        <option value="60">Retiro faena: 60 días</option>
+                                        <option value="114">Retiro faena: 114 días</option>
+                                    </select>
+                                    <select id="rafaga-recordatorio" class="form-control" style="flex:1; min-width:0; padding:2px 6px; font-size:11px; height:30px; margin:0;">
+                                        <option value="0">Sin recordatorio</option>
+                                        <option value="15">Revacunar en 15d</option>
+                                        <option value="21">Revacunar en 21d</option>
+                                        <option value="30">Revacunar en 1 mes</option>
+                                        <option value="90">Revacunar en 3 meses</option>
+                                        <option value="180">Revacunar en 6 meses</option>
+                                    </select>
+                                </div>
+                                <input type="text" id="rafaga-detalles" class="form-control" placeholder="Notas adicionales de aplicación (opcional)" style="padding:4px 8px; font-size:11px; height:30px; margin:0;">
+                            </div>
+
+                            <div id="caja-rafaga-dx" style="display:none; align-items:center; gap:6px; margin-bottom:8px;">
+                                <span style="font-size:11px; font-weight:700; color:var(--exito); white-space:nowrap;">Resultado Dx:</span>
+                                <select id="rafaga-dx-resultado" class="form-control" style="padding:4px 8px; font-size:11.5px; height:32px; margin:0; font-weight:600;">
+                                    <option value="Preñada">Preñada</option>
+                                    <option value="Vacía">Vacía</option>
+                                    <option value="Vacía (Sangre)">Vacía (Sangre)</option>
+                                    <option value="Aborto / Pérdida">Aborto / Pérdida</option>
+                                </select>
+                            </div>
+
+                            <div style="display:flex; gap:8px; margin-top:8px; padding-top:8px; border-top:1px solid var(--borde);">
+                                <button type="button" class="btn-guardar" style="flex:1.6; margin:0; padding:8px 10px; font-size:12px; height:36px; border-radius:10px; background:linear-gradient(135deg, #10b981, #059669);" onclick="window.guardarYOcultarRafaga()">Listo (Dejar Encendido)</button>
+                                <button type="button" class="btn-guardar" style="flex:1; margin:0; padding:8px 10px; font-size:12px; height:36px; border-radius:10px; background:rgba(239,68,68,0.16); color:#ef4444; border:1px solid rgba(239,68,68,0.35);" onclick="window.apagarModoRafaga()">Apagar</button>
+                            </div>
                         </div>
                     </div>
-                    <button type="button" id="btn-toggle-rafaga" class="btn-outline" style="font-weight:bold; padding: 5px 14px; font-size:11px;" onclick="toggleRafaga()">APAGADO</button>
                 </div>
 
-                <div id="opciones-rafaga" class="oculto" style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">
-                    <div style="display:flex; gap:8px; margin-bottom:8px; align-items:center;">
-                        <span style="font-size:11px; font-weight:bold; color:var(--text-muted); white-space:nowrap;">Modalidad:</span>
-                        <select id="rafaga-modalidad" class="form-control" style="padding:6px 10px; font-size:12px; height:34px; margin:0;" onchange="verificarRafagaCustom()">
-                            <option value="manual" selected> Carga Rápida (Teclado)</option>
-                            <option value="rfid">Antena / Balanza Automática</option>
-                        </select>
-                    </div>
-
-                    <!-- Carga manual con peso 100% opcional -->
-                    <div id="caja-rafaga-manual" style="display:flex; gap:8px; margin-bottom:8px; background: rgba(37, 99, 235, 0.08); padding: 8px 12px; border-radius: 6px; border: 1px solid var(--border);">
-                        <input type="text" id="rm-caravana" class="form-control" placeholder="Nº RP / Caravana (Obligatorio)" style="flex:1.2; margin:0; padding:6px 10px; font-size:13px; height:34px; font-weight:bold;" onkeyup="if(event.key === 'Enter') ejecutarRafagaManual()">
-                        <input type="number" step="0.5" id="rm-valor" class="form-control" placeholder="Peso Kg (Opcional)" style="flex:1; margin:0; padding:6px 10px; font-size:12px; height:34px;" onkeyup="if(event.key === 'Enter') ejecutarRafagaManual()">
-                        <button type="button" class="btn btn-primary" style="margin:0; width:auto; padding:0 20px; font-size:12px; height:34px;" onclick="ejecutarRafagaManual()"> Aplicar</button>
-                    </div>
-
-                    <div style="display:flex; gap:10px; margin-bottom:8px;">
-                        <div style="flex:1; min-width:0;">
-                            <select id="rafaga-accion" class="form-control" style="padding:6px 10px; font-size:12px; height:34px; margin:0; font-weight:bold;" onchange="verificarRafagaCustom()">
-                                <option value="solo_peso">Solo Peso</option>
-                                <option value="Vacuna Aftosa" selected>Vacuna Aftosa</option>
-                                <option value="Vacuna Carbunclo">Vacuna Carbunclo</option>
-                                <option value="Antiparasitario (Ivermectina)">Antiparasitario</option>
-                                <option value="Vitamina ADE">Vitamina ADE</option>
-                                <option value="Antibiótico / Curación">Antibiótico / Curación</option>
-                                <option value="tacto">Tacto / Diagnóstico</option>
-                                <option value="OTRO">Otro tratamiento...</option>
-                            </select>
-                            <input type="text" id="rafaga-prod-custom" class="form-control oculto" placeholder="Escriba el producto..." style="margin-top:6px; padding:6px 8px; font-size:12px; height:30px;">
-                        </div>
-                    </div>
-
-                    <!-- Detalles completos de Sanidad para Ráfaga en PC -->
-                    <div id="caja-rafaga-sanidad-detalles" style="display:flex; flex-direction:column; gap:8px; margin-bottom:8px; background:var(--bg-base); padding:10px; border-radius:6px; border:1px solid var(--border);">
-                        <div style="display:flex; gap:8px;">
-                            <input type="text" id="rafaga-lote-dosis" class="form-control" placeholder="Lote o Dosis (Ej: 10ml, Lote 45)" style="flex:1; margin:0; padding:6px 10px; font-size:12px; height:32px;">
-                            <select id="rafaga-via" class="form-control" style="flex:1; margin:0; padding:6px 10px; font-size:12px; height:32px;">
-                                <option value="Subcutánea">Vía: Subcutánea</option>
-                                <option value="Intramuscular">Vía: Intramuscular</option>
-                                <option value="Pour-on">Vía: Pour-on</option>
-                                <option value="Oral">Vía: Oral</option>
-                            </select>
-                            <select id="rafaga-retiro" class="form-control" style="flex:1; margin:0; padding:6px 10px; font-size:12px; height:32px;">
-                                <option value="0">Retiro: 0 días (Cría/Tambo)</option>
-                                <option value="14">Retiro faena: 14 días</option>
-                                <option value="28">Retiro faena: 28 días</option>
-                                <option value="35">Retiro faena: 35 días</option>
-                                <option value="60">Retiro faena: 60 días</option>
-                                <option value="114">Retiro faena: 114 días (L.A.)</option>
-                            </select>
-                            <select id="rafaga-recordatorio" class="form-control" style="flex:1; margin:0; padding:6px 10px; font-size:12px; height:32px; border-color:var(--warning);">
-                                <option value="0">Sin recordatorio</option>
-                                <option value="15">Revacunar en 15d</option>
-                                <option value="21">Revacunar en 21d</option>
-                                <option value="30">Revacunar en 1 mes</option>
-                                <option value="90">Revacunar en 3 meses</option>
-                                <option value="180">Revacunar en 6 meses</option>
-                            </select>
-                        </div>
-                        <input type="text" id="rafaga-detalles" class="form-control" placeholder="Notas adicionales de la aplicación (opcional)" style="margin:0; padding:6px 10px; font-size:12px; height:32px;">
-                    </div>
-
-                    <!-- Tacto para Ráfaga en PC -->
-                    <div id="caja-rafaga-dx" style="display:none; align-items:center; gap:8px; margin-bottom:8px;">
-                        <span style="font-size:11px; font-weight:bold; color:var(--success); white-space:nowrap;">Diagnóstico:</span>
-                        <select id="rafaga-dx-resultado" class="form-control" style="padding:4px 8px; font-size:11px; height:30px; margin:0; border-color: var(--success); font-weight:bold;">
-                            <option value="Preñada">Preñada</option>
-                            <option value="Vacía">Vacía</option>
-                            <option value="Vacía (Sangre)">Vacía (Sangre)</option>
-                            <option value="Aborto / Pérdida">Aborto / Pérdida</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-
-            <div class="search-bar">
-                <input type="text" id="buscador-caravana" class="form-control" style="margin:0; flex:1;" placeholder="Ingrese el Nº de RP a buscar..." autocomplete="off" onkeyup="if(event.key === 'Enter') buscarCaravanaBtn()">
-                <button type="button" class="btn-primary" style="width:150px; margin:0;" onclick="buscarCaravanaBtn()">Buscar RP</button>
-            </div>
-            
             <div id="ficha-animal" class="oculto">
                 <div class="hero-animal-card" style="padding:22px;">
                     <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:14px;">
@@ -3896,10 +3971,7 @@ function procesarEventos() {
                         } else { lblLic.innerText = "Licencia Perpetua / Sin Límite"; }
                         
                         const featuresActivos = mData.features || "";
-                        if(!featuresActivos.includes('rafaga')) {
-                            let bloqueRafaga = document.getElementById('tarjeta-rafaga');
-                            if (bloqueRafaga) bloqueRafaga.style.display = 'none';
-                        }
+                        // Modo Ráfaga disponible en desplegable flotante
                     }
                 }).catch(e =>{});
 
@@ -10051,6 +10123,217 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             }, 150);
         };
         function ejecutarDescargaPDF() { return window.ejecutarDescargaPDF(); }
+
+
+        window.conectarBluetoothBLE = async function() {
+            const btn = document.getElementById('btn-conectar-ble');
+            const lbl = document.getElementById('lbl-estado-bluetooth');
+            if (!navigator.bluetooth) {
+                alert("Para conectar el bastón o balanza en PC o móvil por Bluetooth HID, vinculalo desde la configuración Bluetooth de tu equipo; Taurus Track Pro capturará las lecturas automáticamente.");
+                return;
+            }
+            try {
+                if (btn) btn.innerText = "Buscando...";
+                const dev = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e', '0000ffe0-0000-1000-8000-00805f9b34fb']
+                });
+                if (btn) btn.innerText = "Conectado";
+                if (lbl) { lbl.innerText = "Conectado: " + (dev.name || "Bastón / Balanza"); lbl.style.color = "var(--exito)"; }
+            } catch(e) {
+                if (btn) btn.innerText = "Conectar Bastón / Balanza";
+            }
+        };
+        function conectarBluetoothBLE() { return window.conectarBluetoothBLE(); }
+
+
+
+        // =========================================================================
+        // CONTROLADOR INTELIGENTE DE MODO RÁFAGA (BLUETOOTH VS TECLADO MANUAL)
+        // =========================================================================
+        window.obtenerTextoAccionRafaga = function() {
+            const selEl = document.getElementById('rafaga-accion');
+            if (!selEl) return 'Activo';
+            const val = selEl.value;
+            if (val === 'OTRO') {
+                const customInput = document.getElementById('rafaga-prod-custom');
+                return (customInput && customInput.value.trim()) ? customInput.value.trim() : 'Tratamiento';
+            }
+            return selEl.options[selEl.selectedIndex] ? selEl.options[selEl.selectedIndex].text : val;
+        };
+
+        window.actualizarVisualBotonRafaga = function() {
+            const btn = document.getElementById('btn-toggle-rafaga');
+            const lbl = document.getElementById('lbl-btn-rafaga');
+            const lblResumenManual = document.getElementById('lbl-resumen-rafaga-manual');
+            if (!btn) return;
+            if (rafagaActiva) {
+                btn.classList.add('activo');
+                if (lbl) lbl.innerText = "Ráfaga: ON";
+                if (lblResumenManual) {
+                    lblResumenManual.innerText = "Ráfaga Manual · " + window.obtenerTextoAccionRafaga();
+                }
+            } else {
+                btn.classList.remove('activo');
+                btn.style.background = "";
+                btn.style.color = "";
+                if (lbl) lbl.innerText = "Ráfaga";
+            }
+        };
+
+        window.verificarRafagaCustom = function() {
+            const selEl = document.getElementById('rafaga-accion');
+            const sel = selEl ? selEl.value : 'Vacuna Aftosa';
+            const modalidad = document.getElementById('rafaga-modalidad') ? document.getElementById('rafaga-modalidad').value : 'manual';
+            const customInput = document.getElementById('rafaga-prod-custom');
+            const cajaManual = document.getElementById('caja-rafaga-manual');
+            const cajaSaniDet = document.getElementById('caja-rafaga-sanidad-detalles');
+            const cajaDx = document.getElementById('caja-rafaga-dx');
+
+            if (cajaManual) {
+                cajaManual.style.display = (modalidad === 'manual') ? 'flex' : 'none';
+            }
+
+            if (sel === 'solo_peso') {
+                if (customInput) customInput.classList.add('oculto');
+                if (cajaSaniDet) cajaSaniDet.style.display = 'none';
+                if (cajaDx) cajaDx.style.display = 'none';
+            } else if (sel === 'tacto') {
+                if (customInput) customInput.classList.add('oculto');
+                if (cajaSaniDet) cajaSaniDet.style.display = 'none';
+                if (cajaDx) cajaDx.style.display = 'flex';
+            } else {
+                if (cajaDx) cajaDx.style.display = 'none';
+                if (cajaSaniDet) cajaSaniDet.style.display = 'flex';
+                if (sel === 'OTRO') {
+                    if (customInput) { customInput.classList.remove('oculto'); customInput.focus(); }
+                } else {
+                    if (customInput) customInput.classList.add('oculto');
+                }
+            }
+            window.actualizarVisualBotonRafaga();
+        };
+        function verificarRafagaCustom() { return window.verificarRafagaCustom(); }
+
+        window.abrirConfigRafaga = function() {
+            const tarjeta = document.getElementById('tarjeta-rafaga');
+            const opciones = document.getElementById('opciones-rafaga');
+            const cabecera = document.getElementById('cabecera-config-rafaga');
+            const barraEstadoManual = document.getElementById('barra-estado-rafaga-manual');
+            if (!tarjeta) return;
+
+            rafagaActiva = true;
+            window.actualizarVisualBotonRafaga();
+            tarjeta.style.display = '';
+            tarjeta.classList.remove('oculto');
+            tarjeta.classList.remove('modo-barra-manual');
+            if (cabecera) cabecera.style.display = 'flex';
+            if (opciones) opciones.classList.remove('oculto');
+            if (barraEstadoManual) barraEstadoManual.classList.add('oculto');
+            window.verificarRafagaCustom();
+        };
+
+        window.guardarYOcultarRafaga = function() {
+            rafagaActiva = true;
+            window.actualizarVisualBotonRafaga();
+            const tarjeta = document.getElementById('tarjeta-rafaga');
+            const opciones = document.getElementById('opciones-rafaga');
+            const cabecera = document.getElementById('cabecera-config-rafaga');
+            const cajaManual = document.getElementById('caja-rafaga-manual');
+            const barraEstadoManual = document.getElementById('barra-estado-rafaga-manual');
+            const modalidad = document.getElementById('rafaga-modalidad') ? document.getElementById('rafaga-modalidad').value : 'manual';
+
+            if (!tarjeta) return;
+
+            if (modalidad === 'rfid') {
+                // En modo Bluetooth / Bastón RFID: ocultar todo el cuadro y dejar únicamente el botón Ráfaga: ON encendido
+                tarjeta.classList.remove('modo-barra-manual');
+                tarjeta.classList.add('oculto');
+                if (typeof window.mostrarToast === 'function') {
+                    window.mostrarToast(`Ráfaga Bluetooth ENCENDIDO (${window.obtenerTextoAccionRafaga()})`);
+                }
+            } else {
+                // En modo Carga Rápida (Teclado Manual): ocultar las opciones de configuración pero DEJAR VISIBLE la barra de Nº RP, Peso y Aplicar
+                tarjeta.style.display = '';
+                tarjeta.classList.remove('oculto');
+                tarjeta.classList.add('modo-barra-manual');
+                if (cabecera) cabecera.style.display = 'none';
+                if (opciones) opciones.classList.add('oculto');
+                if (cajaManual) cajaManual.style.display = 'flex';
+                if (barraEstadoManual) barraEstadoManual.classList.remove('oculto');
+                const inpCar = document.getElementById('rm-caravana');
+                if (inpCar) setTimeout(() => inpCar.focus(), 100);
+            }
+        };
+
+        window.apagarModoRafaga = function() {
+            rafagaActiva = false;
+            window.actualizarVisualBotonRafaga();
+            const tarjeta = document.getElementById('tarjeta-rafaga');
+            const barraEstadoManual = document.getElementById('barra-estado-rafaga-manual');
+            if (tarjeta) {
+                tarjeta.classList.remove('modo-barra-manual');
+                tarjeta.classList.add('oculto');
+            }
+            if (barraEstadoManual) barraEstadoManual.classList.add('oculto');
+            if (typeof window.mostrarToast === 'function') {
+                window.mostrarToast("Modo Ráfaga apagado.");
+            }
+        };
+
+        window.toggleRafaga = function() {
+            const tarjeta = document.getElementById('tarjeta-rafaga');
+            if (!tarjeta) return;
+
+            if (!rafagaActiva) {
+                // Si estaba apagado -> Enciende y despliega la configuración completa
+                window.abrirConfigRafaga();
+                const inpCar = document.getElementById('rm-caravana');
+                if (inpCar) setTimeout(() => inpCar.focus(), 150);
+            } else {
+                // Si ya estaba encendido -> Al tocar el botón principal Ráfaga: ON se apaga directamente
+                window.apagarModoRafaga();
+            }
+        };
+        function toggleRafaga() { return window.toggleRafaga(); }
+
+                const _origConectarBluetoothBLE = window.conectarBluetoothBLE;
+        window.conectarBluetoothBLE = async function() {
+            const modEl = document.getElementById('rafaga-modalidad');
+            if (modEl) {
+                modEl.value = 'rfid';
+                window.verificarRafagaCustom();
+            }
+            if (typeof _origConectarBluetoothBLE === 'function') {
+                return await _origConectarBluetoothBLE();
+            }
+        };
+        function conectarBluetoothBLE() { return window.conectarBluetoothBLE(); }
+
+        const _origEjecutarRafagaManual = window.ejecutarRafagaManual;
+        window.ejecutarRafagaManual = function() {
+            if (typeof _origEjecutarRafagaManual === 'function') {
+                _origEjecutarRafagaManual();
+            }
+            // Tras aplicar manualmente un RP, mantener la barra manual compacta activa y visible para el siguiente animal
+            const opciones = document.getElementById('opciones-rafaga');
+            if (rafagaActiva && opciones && !opciones.classList.contains('oculto')) {
+                window.guardarYOcultarRafaga();
+            }
+        };
+        function ejecutarRafagaManual() { return window.ejecutarRafagaManual(); }
+
+        document.addEventListener('click', function(ev) {
+            const tarjeta = document.getElementById('tarjeta-rafaga');
+            const opciones = document.getElementById('opciones-rafaga');
+            const btn = document.getElementById('btn-toggle-rafaga');
+            // Si el panel completo de configuración está desplegado y el usuario toca afuera, pasa al estado activo (solo logo en Bluetooth, o barra RP+Peso en Manual)
+            if (rafagaActiva && tarjeta && !tarjeta.classList.contains('oculto') && opciones && !opciones.classList.contains('oculto')) {
+                if (!tarjeta.contains(ev.target) && (!btn || !btn.contains(ev.target))) {
+                    window.guardarYOcultarRafaga();
+                }
+            }
+        });
 
 </script>
 </body>
