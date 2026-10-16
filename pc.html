@@ -2108,7 +2108,7 @@
     
     <div id="modal-comentario" class="modal"><div class="modal-body"><span class="cerrar" onclick="cerrarModal('modal-comentario')">&times;</span><h3>Anotación General</h3><div class="form-grupo"><textarea class="form-control textarea" id="f-comentario-txt"></textarea></div><button class="btn-guardar" onclick="prepararGuardado('modal-comentario', 'Comentario')">Guardar Nota</button></div></div>
     
-    <div id="modal-rfid" class="modal"><div class="modal-body"><span class="cerrar" onclick="cerrarModal('modal-rfid')">&times;</span><h3>Vincular Bastón RFID</h3><p style="font-size:12px; color:var(--muted); margin-bottom:15px;">Chip <strong id="lbl-rfid-scaneado" style="color:var(--secundario);"></strong>no asignado.</p><div class="form-grupo"><input type="text" class="form-control" id="f-rfid-caravana" placeholder="Ingrese RP (Ej: 1234)" style="text-align: center; font-size: 20px; font-weight: bold;"></div><button class="btn-guardar" onclick="guardarVinculacionRFID()">Vincular y Abrir Ficha</button></div></div>
+    <div id="modal-rfid" class="modal"><div class="modal-body"><span class="cerrar" onclick="cerrarModal('modal-rfid')">&times;</span><h3>Vincular Bastón RFID</h3><p style="font-size:12px; color:var(--muted); margin-bottom:10px;">Chip <strong id="lbl-rfid-scaneado" style="color:var(--secundario);"></strong> no asignado a un RP visual.</p><p id="lbl-rfid-peso-pendiente" style="font-size:12px; color:var(--exito); font-weight:700; margin-bottom:12px; display:none;"></p><div class="form-grupo"><input type="text" class="form-control" id="f-rfid-caravana" placeholder="Ingrese RP (Ej: 1234)" style="text-align: center; font-size: 20px; font-weight: bold;" onkeyup="if(event.key === 'Enter') guardarVinculacionRFID()"></div><button class="btn-guardar" onclick="guardarVinculacionRFID()">Vincular y Abrir Ficha</button><button type="button" class="btn" style="width:100%; margin-top:8px; background:var(--superficie-sub); color:var(--texto); border:1px solid var(--borde-fuerte); padding:10px; border-radius:10px; font-size:12px; font-weight:700;" onclick="usarChipComoRP()">Usar código del Chip directamente como RP</button></div></div>
     
     <div id="m-perfil" class="modal">
         <div class="modal-body">
@@ -2875,6 +2875,38 @@
     <script>
         const APPS_SCRIPT_NOTIFICACIONES = "https://script.google.com/macros/s/AKfycbyt8VbPIc_-0LKbleRiPutWErESZ8gmxSpGXDIo1WXbAciE7J0Sy5YGjYU_O39ZFM-25A/exec";
         
+        
+        if (typeof window.firebase === 'undefined') {
+            console.warn('[Taurus Offline] SDK remoto de Firebase no disponible; activando motor local Offline-First.');
+            const nopPromise = () => Promise.resolve({ docs: [], empty: true, exists: false, data: () => ({}) });
+            const mockDoc = () => ({ get: nopPromise, set: nopPromise, update: nopPromise, delete: nopPromise, onSnapshot: () => () => {}, collection: () => mockCol() });
+            const mockCol = () => ({ doc: mockDoc, add: nopPromise, get: nopPromise, where: () => mockCol(), orderBy: () => mockCol(), limit: () => mockCol(), onSnapshot: () => () => {} });
+            window.firebase = {
+                apps: [{}],
+                initializeApp: () => ({ auth: () => window.firebase.auth(), delete: nopPromise }),
+                firestore: Object.assign(() => ({
+                    settings: () => {},
+                    enablePersistence: () => Promise.resolve(),
+                    collection: mockCol,
+                    batch: () => ({ set: () => {}, update: () => {}, delete: () => {}, commit: nopPromise })
+                }), { CACHE_SIZE_UNLIMITED: -1, FieldValue: { serverTimestamp: () => new Date().toISOString() } }),
+                auth: () => ({
+                    currentUser: null,
+                    onAuthStateChanged: (cb) => {
+                        setTimeout(() => {
+                            try {
+                                const u = localStorage.getItem('tc_ultimo_usuario');
+                                if (u) cb({ email: u }); else cb(null);
+                            } catch(e) { cb(null); }
+                        }, 50);
+                        return () => {};
+                    },
+                    signInWithEmailAndPassword: (email) => Promise.resolve({ user: { email } }),
+                    signOut: () => Promise.resolve()
+                })
+            };
+        }
+
         const firebaseConfig = {
             apiKey: "AIzaSyDTXUYwYYkQ_pKDhui9H3cFmecgAPQ9eqA",
             authDomain: "taurus-cbd59.firebaseapp.com",
@@ -3621,7 +3653,7 @@ function procesarEventos() {
             }
         };
 
-        function ejecutarRafagaManual() {
+        window.ejecutarRafagaManual = function() {
             let inputRp = document.getElementById('rm-caravana');
             let inputVal = document.getElementById('rm-valor');
             if(!inputRp) return;
@@ -4727,7 +4759,6 @@ function procesarEventos() {
             if (elNotasMob) elNotasMob.innerHTML = htmlNotas;
             if (elNotasPC) elNotasPC.innerHTML = htmlNotas;
         };
-        function buscarCaravanaBtn(caravanaParam) { return window.buscarCaravanaBtn(caravanaParam); }
 
         window.toggleOpcionesFicha = function() {
             const m = document.getElementById('menu-opciones-ficha');
@@ -4919,7 +4950,6 @@ function procesarEventos() {
             cerrarModal('m-traza');
             abrirModal('modal-editar-registro');
         };
-        function abrirEdicionRegistro(id, idx) { return window.abrirEdicionRegistro(id, idx); }
 
         window.guardarEdicionRegistro = async function() {
             let inputId = document.getElementById('edit-reg-id');
@@ -4988,7 +5018,6 @@ function procesarEventos() {
             if(typeof actualizarInformeAvanzado === 'function') actualizarInformeAvanzado();
             if(typeof cargarListaRegistro === 'function') cargarListaRegistro();
         };
-        function guardarEdicionRegistro() { return window.guardarEdicionRegistro(); }
 
         function cambiarModoReporte() {
             const modo = document.getElementById('f-inf-modo').value;
@@ -6116,7 +6145,6 @@ function procesarEventos() {
                 else if (v === 'v-config' && typeof window.cargarListaOperadores === 'function') window.cargarListaOperadores();
             }
         };
-        function cambiarVista(v, b) { return window.cambiarVista(v, b); }
         function abrirModal(id) { 
         const m = document.getElementById(id);
         if (m) m.style.display = 'flex'; 
@@ -6497,24 +6525,663 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
             }
         }
 
-        window.recibirTagNFC = function(tagHex) {
-            let dataMinuscula = String(tagHex).trim().toLowerCase();
-            let esRFIDRegistrado = dbCache.find(d =>(d.accion === 'Vinculación RFID' || d.accion === 'Vinculacion_RFID') && String(d.valor).trim().toLowerCase() === dataMinuscula);
-            if(esRFIDRegistrado) {
-                forzarSaltoAFicha();
-                let buscador = document.getElementById('buscador-caravana');
-                if (buscador) buscador.value = esRFIDRegistrado.caravana;
-                if (typeof buscarCaravanaBtn === "function") buscarCaravanaBtn();
+
+        // =========================================================================
+        // MOTOR UNIVERSAL BLUETOOTH & HARDWARE (WINDOWS ELECTRON + iOS SAFARI + ANDROID)
+        // =========================================================================
+        window.pesoPendienteRFID = null;
+        window.ultimoTiempoScanRfidMs = 0;
+        window.ultimoDatoHardwareStr = "";
+        window.ultimoDatoHardwareMs = 0;
+        window.iosModoHidActivo = false;
+
+        window.resolverRpDesdeTag = function(tagRaw) {
+            let limpio = String(tagRaw || "").trim();
+            let norm = limpio.toLowerCase();
+            if (!limpio) return { encontrado: false, rp: "", tagOriginal: "" };
+
+            // 1. Buscar vinculación explícita chip -> RP
+            let vinc = (typeof dbCache !== 'undefined' && Array.isArray(dbCache))
+                ? dbCache.find(d => d && (d.accion === 'Vinculación RFID' || d.accion === 'Vinculacion_RFID') && String(d.valor || "").trim().toLowerCase() === norm)
+                : null;
+            if (vinc && vinc.caravana) {
+                return { encontrado: true, rp: String(vinc.caravana).trim(), tagOriginal: limpio };
+            }
+
+            // 2. Buscar si el código ya existe directamente como caravana / RP en el rodeo
+            let directo = (typeof dbCache !== 'undefined' && Array.isArray(dbCache))
+                ? dbCache.find(d => d && d.caravana && String(d.caravana).trim().toLowerCase() === norm && d.accion !== 'Borrar_Caravana')
+                : null;
+            if (directo && directo.caravana) {
+                return { encontrado: true, rp: String(directo.caravana).trim(), tagOriginal: limpio };
+            }
+
+            return { encontrado: false, rp: limpio.toUpperCase(), tagOriginal: limpio };
+        };
+
+        window.aplicarAccionRafagaActiva = function(origenLabel) {
+            if (typeof rafagaActiva === 'undefined' || !rafagaActiva) return false;
+            const selEl = document.getElementById('rafaga-accion');
+            const sel = selEl ? selEl.value : 'solo_peso';
+            if (sel === 'solo_peso') return false;
+
+            if (sel === 'tacto') {
+                let dxRes = document.getElementById('rafaga-dx-resultado') ? document.getElementById('rafaga-dx-resultado').value : 'Preñada';
+                window.ejecutarAccion('Diagnóstico', "Dx: " + dxRes, origenLabel || "Modo Ráfaga Bluetooth", null);
+                return true;
             } else {
-                rfidPendiente = tagHex;
+                let customInput = document.getElementById('rafaga-prod-custom');
+                let producto = sel === 'OTRO' ? ((customInput && customInput.value.trim()) || 'Tratamiento General') : sel;
+                let loteDosis = document.getElementById('rafaga-lote-dosis') ? document.getElementById('rafaga-lote-dosis').value.trim() : "";
+                let via = document.getElementById('rafaga-via') ? document.getElementById('rafaga-via').value : "Subcutánea";
+                let retiro = document.getElementById('rafaga-retiro') ? parseInt(document.getElementById('rafaga-retiro').value) || 0 : 0;
+                let notas = document.getElementById('rafaga-detalles') ? document.getElementById('rafaga-detalles').value.trim() : "";
+                let recordatorio = document.getElementById('rafaga-recordatorio') ? document.getElementById('rafaga-recordatorio').value : "0";
+
+                let partesDet = [];
+                if (loteDosis) partesDet.push(`Lote/Dosis: ${loteDosis}`);
+                if (via) partesDet.push(`Vía: ${via}`);
+                if (retiro > 0) partesDet.push(`[RETIRO:${retiro}]`);
+                if (notas) partesDet.push(`Notas: ${notas}`);
+                if (recordatorio !== "0") partesDet.push(`[RECORDATORIO:${recordatorio}]`);
+                partesDet.push(origenLabel || "Modo Ráfaga Bluetooth");
+
+                window.ejecutarAccion('Sanidad', producto, partesDet.join(" | "), null);
+                return true;
+            }
+        };
+
+        window.finalizarVinculacionConRP = function(rpElegido) {
+            const rp = String(rpElegido || "").trim().toUpperCase();
+            if (!rp) {
+                alert("Por favor ingrese el número de RP / Caravana.");
+                return;
+            }
+            const chip = String(rfidPendiente || rp).trim();
+            rpActivo = rp;
+
+            if (chip && chip.toUpperCase() !== rp) {
+                window.ejecutarAccion('Vinculación RFID', chip.toLowerCase(), `Chip vinculado: ${chip}`, 'modal-rfid');
+            } else {
+                if (typeof window.cerrarModal === 'function') window.cerrarModal('modal-rfid');
+            }
+
+            const pesoPend = window.pesoPendienteRFID;
+            window.pesoPendienteRFID = null;
+            rfidPendiente = "";
+            const lblPesoPend = document.getElementById('lbl-rfid-peso-pendiente');
+            if (lblPesoPend) { lblPesoPend.style.display = 'none'; lblPesoPend.innerText = ''; }
+
+            if (pesoPend !== null && !isNaN(pesoPend) && pesoPend > 0) {
+                let pStr = Number(pesoPend).toFixed(1) + " Kg";
+                window.ejecutarAccion('Peso', pStr, "Automático (ESP32 Antena + Balanza)", null);
+                let aplicoExtra = window.aplicarAccionRafagaActiva("Modo Ráfaga Bluetooth");
+                window.emitirBeepHardware('combo');
+                if (typeof window.mostrarToast === 'function') {
+                    window.mostrarToast(`RP ${rp} vinculado y pesado: ${pStr}` + (aplicoExtra ? ' + Ráfaga' : ''));
+                }
+            } else {
+                let aplicoExtra = window.aplicarAccionRafagaActiva("Modo Ráfaga Bluetooth");
+                if (typeof window.mostrarToast === 'function') {
+                    window.mostrarToast(`Chip vinculado al RP ${rp}` + (aplicoExtra ? ' + Ráfaga aplicada' : ''));
+                }
+            }
+
+            window.forzarSaltoAFicha();
+            const buscador = document.getElementById('buscador-caravana');
+            if (buscador) buscador.value = rp;
+            if (typeof window.buscarCaravanaBtn === 'function') window.buscarCaravanaBtn(rp);
+        };
+
+        window.guardarVinculacionRFID = function() {
+            const inputCar = document.getElementById('f-rfid-caravana');
+            const rp = inputCar ? inputCar.value.trim().toUpperCase() : '';
+            if (!rp) {
+                alert("Por favor ingrese el número de RP / Caravana.");
+                if (inputCar) inputCar.focus();
+                return;
+            }
+            window.finalizarVinculacionConRP(rp);
+        };
+
+        window.usarChipComoRP = function() {
+            const chip = String(rfidPendiente || "").trim().toUpperCase();
+            if (!chip) {
+                if (typeof window.cerrarModal === 'function') window.cerrarModal('modal-rfid');
+                return;
+            }
+            window.finalizarVinculacionConRP(chip);
+        };
+
+        window.recibirTagNFC = function(tagHex, pesoOpcional = null) {
+            let limpio = String(tagHex || "").trim();
+            if (!limpio) return;
+            window.ultimoTiempoScanRfidMs = Date.now();
+
+            let res = window.resolverRpDesdeTag(limpio);
+            if (res.encontrado) {
+                rpActivo = res.rp;
+                window.forzarSaltoAFicha();
+                let buscador = document.getElementById('buscador-caravana');
+                if (buscador) buscador.value = res.rp;
+                if (typeof window.buscarCaravanaBtn === "function") window.buscarCaravanaBtn(res.rp);
+
+                if (pesoOpcional !== null && !isNaN(pesoOpcional) && pesoOpcional > 0) {
+                    let pStr = Number(pesoOpcional).toFixed(1) + " Kg";
+                    window.ejecutarAccion('Peso', pStr, "Automático (ESP32 Antena + Balanza)", null);
+                    let aplicoExtra = window.aplicarAccionRafagaActiva("Modo Ráfaga Bluetooth");
+                    window.emitirBeepHardware('combo');
+                    if (typeof window.mostrarToast === 'function') {
+                        window.mostrarToast(`[RP: ${res.rp}] Pesado: ${pStr}` + (aplicoExtra ? ` (${window.obtenerTextoAccionRafaga()})` : ''));
+                    }
+                } else {
+                    let aplicoExtra = window.aplicarAccionRafagaActiva("Modo Ráfaga RFID");
+                    if (aplicoExtra && typeof window.mostrarToast === 'function') {
+                        window.mostrarToast(`[RP: ${res.rp}] Registrado: ${window.obtenerTextoAccionRafaga()}`);
+                    } else if (typeof window.mostrarToast === 'function') {
+                        window.mostrarToast(`Caravana leída: RP ${res.rp}`);
+                    }
+                }
+            } else {
+                rfidPendiente = limpio;
+                window.pesoPendienteRFID = (pesoOpcional !== null && !isNaN(pesoOpcional) && pesoOpcional > 0) ? Number(pesoOpcional) : null;
                 let inputVincular = document.getElementById('f-rfid-caravana');
                 if (inputVincular) inputVincular.value = '';
                 let lblScaneado = document.getElementById('lbl-rfid-scaneado');
-                if (lblScaneado) lblScaneado.innerText = tagHex;
-                if (typeof abrirModal === "function") abrirModal('modal-rfid');
-                setTimeout(() =>{ if(inputVincular) inputVincular.focus(); }, 500);
+                if (lblScaneado) lblScaneado.innerText = limpio;
+                let lblPesoPend = document.getElementById('lbl-rfid-peso-pendiente');
+                if (lblPesoPend) {
+                    if (window.pesoPendienteRFID !== null) {
+                        lblPesoPend.style.display = 'block';
+                        lblPesoPend.innerText = `⚖️ Peso en balanza: ${window.pesoPendienteRFID.toFixed(1)} Kg (se guardará al vincular)`;
+                    } else {
+                        lblPesoPend.style.display = 'none';
+                        lblPesoPend.innerText = '';
+                    }
+                }
+                if (typeof window.abrirModal === "function") window.abrirModal('modal-rfid');
+                setTimeout(() => { if (inputVincular) inputVincular.focus(); }, 350);
             }
         };
+
+        window.emitirBeepHardware = function(tipo = 'exito') {
+            try {
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                const ctx = new AudioCtx();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+
+                if (tipo === 'combo') {
+                    osc.frequency.setValueAtTime(880, ctx.currentTime);
+                    osc.frequency.setValueAtTime(1320, ctx.currentTime + 0.1);
+                    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.25);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.25);
+                } else if (tipo === 'rfid') {
+                    osc.frequency.setValueAtTime(1046.5, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.12);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.12);
+                } else if (tipo === 'peso') {
+                    osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.15);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.15);
+                } else {
+                    osc.frequency.setValueAtTime(440, ctx.currentTime);
+                    gain.gain.setValueAtTime(0.2, ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+                    osc.start(ctx.currentTime);
+                    osc.stop(ctx.currentTime + 0.2);
+                }
+            } catch(e) {}
+        };
+
+        window.marcarBluetoothHidActivo = function() {
+            const btn = document.getElementById('btn-conectar-ble');
+            const lbl = document.getElementById('lbl-estado-bluetooth');
+            if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) return;
+            if (lbl) {
+                lbl.innerText = "Conectado: Taurus Track Pro (Bluetooth)";
+                lbl.style.color = "var(--exito)";
+            }
+            if (btn) {
+                btn.innerText = "Bluetooth Activo";
+            }
+        };
+
+        window.procesarDatoHardware = function(rawInput) {
+            if (!rawInput) return false;
+            let s = String(rawInput).replace(/[\x00-\x1F\x7F]/g, '').trim();
+            if (s.length === 0) return false;
+
+            const ahora = Date.now();
+            if (s === window.ultimoDatoHardwareStr && (ahora - window.ultimoDatoHardwareMs) < 1200) {
+                console.log('[Taurus Hardware] Trama duplicada ignorada:', s);
+                return true;
+            }
+            window.ultimoDatoHardwareStr = s;
+            window.ultimoDatoHardwareMs = ahora;
+            console.log('[Taurus Hardware Input]:', s);
+
+            let rpExtraido = null;
+            let pesoExtraido = null;
+
+            // 1. Detección de JSON ({"rfid":"...","peso":412.5})
+            if (s.startsWith('{') && s.endsWith('}')) {
+                try {
+                    let d = JSON.parse(s);
+                    rpExtraido = d.rp || d.caravana || d.rfid || d.tag || null;
+                    if (d.peso !== undefined || d.weight !== undefined) {
+                        pesoExtraido = parseFloat(d.peso !== undefined ? d.peso : d.weight);
+                    }
+                } catch(e) {}
+            }
+
+            // 2. Detección Clave-Valor: RP:1234,PESO:385.5 o TAG:982... W:385.5
+            if (!rpExtraido) {
+                let mKV = s.match(/(?:RP|TAG|RFID|CARAVANA|ID)[:=\s]+([a-zA-Z0-9_-]+).*?(?:PESO|WEIGHT|KG|W)[:=\s]+([\d.]+)/i);
+                if (mKV) {
+                    rpExtraido = mKV[1];
+                    pesoExtraido = parseFloat(mKV[2]);
+                }
+            }
+
+            // 3. Detección Delimitada: 982000123456001,412.50 (excluyendo "PESO,412.50" que es solo peso)
+            if (!rpExtraido) {
+                let partes = s.split(/[,;\t|/]+/);
+                if (partes.length === 2) {
+                    let p1 = partes[0].trim();
+                    let p2 = partes[1].replace(/[^\d.]/g, '').trim();
+                    let p2Num = parseFloat(p2);
+                    if (!/^(?:PESO|WEIGHT|KG|KGS|W|ST|GS)$/i.test(p1) && !isNaN(p2Num) && p2Num > 0 && p1.length > 0) {
+                        rpExtraido = p1;
+                        pesoExtraido = p2Num;
+                    }
+                }
+            }
+
+            // 4. Si se encontró combo (RFID + PESO) -> Procesar lectura combinada ESP-NOW + BLE
+            if (rpExtraido && pesoExtraido !== null && !isNaN(pesoExtraido) && pesoExtraido > 0) {
+                let res = window.resolverRpDesdeTag(rpExtraido);
+                let rpFinal = res.encontrado ? res.rp : String(rpExtraido).trim().toUpperCase();
+
+                if (!window.esCaravanaValida(rpFinal)) {
+                    console.warn('[Taurus Hardware] Combo descartado por caravana inválida:', rpFinal);
+                    return false;
+                }
+
+                // Si el chip RFID aún no fue vinculado a ningún RP y NO está en modo Ráfaga automática,
+                // abrir el modal de vinculación conservando el peso para guardarlo al instante de vincular;
+                // Si está en Modo Ráfaga (o ya está vinculado), registrar directo sin interrumpir la manga.
+                if (!res.encontrado && (typeof rafagaActiva === 'undefined' || !rafagaActiva)) {
+                    window.emitirBeepHardware('combo');
+                    window.forzarSaltoAFicha();
+                    window.recibirTagNFC(rpFinal, pesoExtraido);
+                    return true;
+                }
+
+                rpActivo = rpFinal;
+                window.forzarSaltoAFicha();
+                let buscador = document.getElementById('buscador-caravana');
+                if (buscador) buscador.value = rpFinal;
+                if (typeof window.buscarCaravanaBtn === 'function') window.buscarCaravanaBtn(rpFinal);
+
+                let pStr = pesoExtraido.toFixed(1) + " Kg";
+                window.ejecutarAccion('Peso', pStr, "Automático (ESP32 Antena + Balanza)", null);
+                let aplicoExtra = window.aplicarAccionRafagaActiva("Modo Ráfaga Bluetooth");
+
+                window.emitirBeepHardware('combo');
+                if (typeof window.mostrarToast === 'function') {
+                    window.mostrarToast(`[RP: ${rpFinal}] Pesado: ${pStr}` + (aplicoExtra ? ` + ${window.obtenerTextoAccionRafaga()}` : ''));
+                }
+                return true;
+            }
+
+            // 5. Detección de Peso Aislado (Balanza sola: "PESO 412.50", "PESO:412.50", "ST,GS,+ 412.5kg", "412.50")
+            let tieneIndPeso = /(?:^PESO|^WEIGHT|KG|KGS|ST,GS|\+)/i.test(s) || (s.includes('.') && s.length <= 7);
+            let mPeso = s.match(/(?:PESO|WEIGHT|W|ST,GS|[+])?[:=,\s]*([\d]+(?:\.[\d]+)?)\s*(?:KG|KGS)?$/i);
+            if (tieneIndPeso && mPeso) {
+                let pNum = parseFloat(mPeso[1]);
+                if (pNum >= 5.0 && pNum <= 2500.0) {
+                    if (rpActivo && window.esCaravanaValida(rpActivo)) {
+                        let pStr = pNum.toFixed(1) + " Kg";
+                        let scanReciente = (Date.now() - (window.ultimoTiempoScanRfidMs || 0)) < 30000;
+                        if ((typeof rafagaActiva !== 'undefined' && rafagaActiva) || scanReciente) {
+                            window.ejecutarAccion('Peso', pStr, "Automático (Balanza Bluetooth)", null);
+                            let aplicoExtra = window.aplicarAccionRafagaActiva("Modo Ráfaga Bluetooth");
+                            window.emitirBeepHardware('combo');
+                            if (typeof window.mostrarToast === 'function') {
+                                window.mostrarToast(`Guardado: ${pStr} para RP ${rpActivo}` + (aplicoExtra ? ` + ${window.obtenerTextoAccionRafaga()}` : ''));
+                            }
+                        } else {
+                            window.forzarSaltoAFicha();
+                            if (typeof window.abrirModal === 'function') window.abrirModal('modal-peso');
+                            let inputPeso = document.getElementById('i-peso-val');
+                            if (inputPeso) inputPeso.value = pNum;
+                            window.emitirBeepHardware('peso');
+                        }
+                    } else {
+                        window.emitirBeepHardware('error');
+                        if (typeof window.mostrarToast === 'function') {
+                            window.mostrarToast(`Balanza detectó: ${pNum.toFixed(1)} Kg. Seleccione o escanee primero la caravana del animal.`, true);
+                        }
+                    }
+                    return true;
+                }
+            }
+
+            // 6. Detección de Chip RFID / Caravana en Modo Independiente (Solo Lector RFID)
+            let digitosSolo = s.replace(/\D/g, '');
+            let esIsoTag = (digitosSolo.length === 15 && (digitosSolo.startsWith('9') || digitosSolo.startsWith('8')));
+            let tagFinal = esIsoTag ? digitosSolo : s.replace(/^(?:TAG|RFID|ID|RP)[:=\s]+/i, '').trim().toUpperCase();
+
+            window.emitirBeepHardware('rfid');
+            window.forzarSaltoAFicha();
+            window.recibirTagNFC(tagFinal, null);
+            return true;
+        };
+
+        // Puente global para Android Studio WebView, Electron IPC y navegadores
+        window.recibirDatoBluetooth = function(data) {
+            window.marcarBluetoothHidActivo();
+            return window.procesarDatoHardware(data);
+        };
+
+        // =========================================================================
+        // CLIENTE BLUETOOTH BLE (WINDOWS ELECTRON, ANDROID Y SAFARI iOS)
+        // =========================================================================
+        var bleDevice = null;
+        var bleServer = null;
+        var bleRxCharacteristic = null;
+        var bleWriteCharacteristic = null;
+        var bleBuffer = "";
+
+        function onBleDisconnected() {
+            bleRxCharacteristic = null;
+            bleWriteCharacteristic = null;
+            bleBuffer = "";
+            const btn = document.getElementById('btn-conectar-ble');
+            const lbl = document.getElementById('lbl-estado-bluetooth');
+            if (btn) btn.innerText = "Conectar Bastón / Balanza";
+            if (lbl) { lbl.innerText = "Bluetooth: Desconectado"; lbl.style.color = "var(--muted)"; }
+            if (typeof window.mostrarToast === 'function') window.mostrarToast("Dispositivo Bluetooth desconectado.");
+        }
+
+        function onBleCharacteristicValueChanged(event) {
+            try {
+                const dec = new TextDecoder('utf-8');
+                const chunk = dec.decode(event.target.value);
+                if (bleBuffer.length > 1024) bleBuffer = "";
+                bleBuffer += chunk;
+                if (bleBuffer.includes('\n') || bleBuffer.includes('\r')) {
+                    const lineas = bleBuffer.split(/[\r\n]+/);
+                    bleBuffer = lineas.pop() || "";
+                    lineas.forEach(l => {
+                        const limpia = l.trim();
+                        if (limpia.length > 0 && typeof window.procesarDatoHardware === 'function') {
+                            window.procesarDatoHardware(limpia);
+                        }
+                    });
+                }
+            } catch(err) {
+                console.warn("[BLE Stream Decode Error]:", err);
+            }
+        }
+
+        window.conectarBluetoothBLE = async function() {
+            const btn = document.getElementById('btn-conectar-ble');
+            const lbl = document.getElementById('lbl-estado-bluetooth');
+
+            // 1. Soporte puente nativo Android Studio WebView (si existe interfaz inyectada)
+            if (window.AndroidBluetooth && typeof window.AndroidBluetooth.conectar === 'function') {
+                try {
+                    window.AndroidBluetooth.conectar();
+                    if (btn) btn.innerText = "Conectado (Android)";
+                    if (lbl) { lbl.innerText = "Conectado: Taurus Track Pro"; lbl.style.color = "var(--exito)"; }
+                    return;
+                } catch(e) {}
+            }
+
+            // 2. Soporte específico iOS Safari / WebKit (donde Apple no expone navigator.bluetooth)
+            if (!navigator.bluetooth) {
+                window.iosModoHidActivo = !window.iosModoHidActivo;
+                if (window.iosModoHidActivo) {
+                    if (btn) btn.innerText = "Modo iOS Activo";
+                    if (lbl) {
+                        lbl.innerText = "Escuchando: Taurus Track Pro (iOS Bluetooth)";
+                        lbl.style.color = "var(--exito)";
+                    }
+                    if (typeof window.mostrarToast === 'function') {
+                        window.mostrarToast("Modo Bluetooth iOS activo. Enlaza 'Taurus Track Pro' en Ajustes > Bluetooth de tu iPhone.");
+                    }
+                } else {
+                    if (btn) btn.innerText = "Conectar Bastón / Balanza";
+                    if (lbl) {
+                        lbl.innerText = "Bluetooth: Desconectado";
+                        lbl.style.color = "var(--muted)";
+                    }
+                }
+                return;
+            }
+
+            // 3. Si ya estaba conectado por Web Bluetooth -> Desconectar limpio
+            if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) {
+                try {
+                    if (bleRxCharacteristic) {
+                        bleRxCharacteristic.removeEventListener('characteristicvaluechanged', onBleCharacteristicValueChanged);
+                    }
+                    bleDevice.removeEventListener('gattserverdisconnected', onBleDisconnected);
+                    bleDevice.gatt.disconnect();
+                } catch(e) {}
+                onBleDisconnected();
+                return;
+            }
+
+            try {
+                if (btn) btn.innerText = "Buscando...";
+                if (lbl) { lbl.innerText = "Buscando 'Taurus Track Pro'..."; lbl.style.color = "var(--secundario)"; }
+
+                const UART_SERVICE = '6e400001-b5a3-f393-e0a9-e50e24dcca9e';
+                const UART_RX_WRITE = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+                const UART_TX_NOTIFY = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+
+                bleDevice = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: [
+                        UART_SERVICE,
+                        '0000ffe0-0000-1000-8000-00805f9b34fb',
+                        '000018f0-0000-1000-8000-00805f9b34fb',
+                        '49535343-fe7d-4ae5-8fa9-9fafd205e455'
+                    ]
+                });
+
+                bleDevice.removeEventListener('gattserverdisconnected', onBleDisconnected);
+                bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
+
+                if (btn) btn.innerText = "Conectando...";
+                bleServer = await bleDevice.gatt.connect();
+
+                let foundNotifyChar = null;
+                let foundWriteChar = null;
+
+                // Prioridad 1: Servicio Nordic UART oficial de Taurus Track Pro (ESP32-C3)
+                try {
+                    const uartService = await bleServer.getPrimaryService(UART_SERVICE);
+                    if (uartService) {
+                        try {
+                            foundNotifyChar = await uartService.getCharacteristic(UART_TX_NOTIFY);
+                        } catch(e) {}
+                        try {
+                            foundWriteChar = await uartService.getCharacteristic(UART_RX_WRITE);
+                        } catch(e) {}
+                        if (!foundNotifyChar) {
+                            const chars = await uartService.getCharacteristics();
+                            for (let c of chars) {
+                                if (c.properties.notify || c.properties.indicate) {
+                                    foundNotifyChar = c;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                } catch(e) {}
+
+                // Prioridad 2: Otros servicios seriales BLE (HM-10, ISSC, etc.), ignorando servicios de sistema (0x1800, 0x1801, 0x180a, 0x180f, 0x1812)
+                if (!foundNotifyChar) {
+                    let services = await bleServer.getPrimaryServices();
+                    for (let s of services) {
+                        const suuid = String(s.uuid || '').toLowerCase();
+                        if (suuid.startsWith('00001800') || suuid.startsWith('00001801') || suuid.startsWith('0000180a') || suuid.startsWith('0000180f') || suuid.startsWith('00001812')) {
+                            continue;
+                        }
+                        try {
+                            let chars = await s.getCharacteristics();
+                            for (let c of chars) {
+                                if (!foundNotifyChar && (c.properties.notify || c.properties.indicate)) {
+                                    foundNotifyChar = c;
+                                }
+                                if (!foundWriteChar && (c.properties.write || c.properties.writeWithoutResponse)) {
+                                    foundWriteChar = c;
+                                }
+                            }
+                        } catch(e) {}
+                        if (foundNotifyChar) break;
+                    }
+                }
+
+                if (foundNotifyChar) {
+                    bleRxCharacteristic = foundNotifyChar;
+                    bleWriteCharacteristic = foundWriteChar;
+                    await bleRxCharacteristic.startNotifications();
+                    bleRxCharacteristic.removeEventListener('characteristicvaluechanged', onBleCharacteristicValueChanged);
+                    bleRxCharacteristic.addEventListener('characteristicvaluechanged', onBleCharacteristicValueChanged);
+
+                    // Confirmar al ESP32-C3 que estamos usando el canal GATT UART directo (evita doble envío HID)
+                    if (bleWriteCharacteristic) {
+                        try {
+                            const enc = new TextEncoder();
+                            const cmd = enc.encode("MODE:UART\n");
+                            if (bleWriteCharacteristic.properties.writeWithoutResponse && typeof bleWriteCharacteristic.writeValueWithoutResponse === 'function') {
+                                await bleWriteCharacteristic.writeValueWithoutResponse(cmd);
+                            } else {
+                                await bleWriteCharacteristic.writeValue(cmd);
+                            }
+                        } catch(e) {}
+                    }
+
+                    if (btn) btn.innerText = "Desconectar";
+                    if (lbl) { lbl.innerText = `Conectado: ${bleDevice.name || 'Taurus Track Pro'}`; lbl.style.color = "var(--exito)"; }
+                    if (typeof window.mostrarToast === 'function') window.mostrarToast(`Conectado con éxito a ${bleDevice.name || 'Taurus Track Pro'}`);
+                } else {
+                    if (btn) btn.innerText = "Conectado (HID)";
+                    if (lbl) { lbl.innerText = `Conectado: ${bleDevice.name || 'Taurus Track Pro'}`; lbl.style.color = "var(--exito)"; }
+                }
+            } catch(error) {
+                if (window.taurusNative && typeof window.taurusNative.cancelarBusquedaBle === 'function') {
+                    try { window.taurusNative.cancelarBusquedaBle(); } catch(e) {}
+                }
+                if (btn) btn.innerText = "Conectar Bastón / Balanza";
+                if (lbl) { lbl.innerText = "Bluetooth: Desconectado"; lbl.style.color = "var(--muted)"; }
+                if (error && error.name !== 'NotFoundError') {
+                    console.warn('[Bluetooth BLE Error]:', error);
+                }
+            }
+        };
+
+        // =========================================================================
+        // CAPTURADOR HID INTELIGENTE (SAFARI iOS / WINDOWS / ANDROID)
+        // =========================================================================
+        var bufferTeclado = "";
+        var timeoutTeclado = null;
+        var ultimoKeydownHidMs = 0;
+        var rafagaRapidaHidDetectada = false;
+        var elementoInputHid = null;
+        var valorOriginalInputHid = "";
+
+        window.esTramaHardwareCompleta = function(str) {
+            const limpio = String(str || "").trim();
+            if (!limpio) return false;
+            // Combo RFID,PESO (ej: 982000123456001,412.50)
+            if (/^[A-Za-z0-9_-]{3,24}[,;|\t]\d+(?:\.\d+)?$/.test(limpio)) return true;
+            // Trama explícita de peso (ej: PESO 412.50)
+            if (/^(?:PESO|WEIGHT|ST,GS)[\s:=,]+\d+(?:\.\d+)?/i.test(limpio)) return true;
+            // Caravana electrónica ISO 15 dígitos (982... / 858...)
+            const digitos = limpio.replace(/\D/g, '');
+            if (digitos.length === 15 && (digitos.startsWith('9') || digitos.startsWith('8'))) return true;
+            return false;
+        };
+
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'Meta' || event.key === 'CapsLock') return;
+
+            const ahora = Date.now();
+            const deltaMs = ahora - ultimoKeydownHidMs;
+            ultimoKeydownHidMs = ahora;
+
+            const enInput = event.target && (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA');
+
+            if (event.key === 'Enter') {
+                // Caso A: El usuario o el lector HID terminó de escribir dentro de un input (ej. buscador o ráfaga manual en iOS Safari)
+                if (enInput) {
+                    const valInput = String(event.target.value || "").trim();
+                    if (window.esTramaHardwareCompleta(valInput) || (rafagaRapidaHidDetectada && bufferTeclado.trim().length >= 4)) {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const trama = window.esTramaHardwareCompleta(valInput) ? valInput : bufferTeclado.trim();
+                        event.target.value = valorOriginalInputHid || "";
+                        bufferTeclado = "";
+                        rafagaRapidaHidDetectada = false;
+                        elementoInputHid = null;
+                        clearTimeout(timeoutTeclado);
+                        window.marcarBluetoothHidActivo();
+                        window.procesarDatoHardware(trama);
+                        return;
+                    }
+                    bufferTeclado = "";
+                    rafagaRapidaHidDetectada = false;
+                    clearTimeout(timeoutTeclado);
+                    return;
+                }
+
+                // Caso B: Ningún input enfocado -> procesar buffer global HID
+                if (bufferTeclado.trim().length > 0) {
+                    event.preventDefault();
+                    const trama = bufferTeclado.trim();
+                    bufferTeclado = "";
+                    rafagaRapidaHidDetectada = false;
+                    clearTimeout(timeoutTeclado);
+                    window.marcarBluetoothHidActivo();
+                    window.procesarDatoHardware(trama);
+                }
+                return;
+            }
+
+            if (event.key.length === 1) {
+                if (enInput) {
+                    if (bufferTeclado.length === 0) {
+                        elementoInputHid = event.target;
+                        valorOriginalInputHid = event.target.value || "";
+                        rafagaRapidaHidDetectada = false;
+                    } else if (deltaMs < 45 && bufferTeclado.length >= 3) {
+                        rafagaRapidaHidDetectada = true;
+                    }
+                }
+                bufferTeclado += event.key;
+                clearTimeout(timeoutTeclado);
+                timeoutTeclado = setTimeout(() => {
+                    bufferTeclado = "";
+                    rafagaRapidaHidDetectada = false;
+                }, 900);
+            }
+        }, true);
+
 
         // =========================================================
         // INTEGRACIÓN OFICIAL Y AVANZADA DE CORA (INTELIGENCIA Y CONTROL)
@@ -7089,54 +7756,7 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
         }
 
 
-        let bufferTeclado = "";
-        let timeoutTeclado;
-        document.addEventListener('keydown', function(event) {
-            if(event.key === 'Shift' || event.key === 'Control' || event.key === 'Alt' || event.key === 'CapsLock') return;
-            if (event.key === 'Enter') {
-                if (bufferTeclado.length >2) {
-                    event.preventDefault(); 
-                    let dataLimpia = bufferTeclado.replace(/[^a-zA-Z0-9.-]/g, '').trim().toUpperCase(); 
-                    let esPeso = (!isNaN(dataLimpia) && dataLimpia.length <= 6) || dataLimpia.includes('.');
-                    if (esPeso) {
-                        if (typeof rpActivo !== 'undefined' && rpActivo && rpActivo !== "---") {
-                            if(typeof rafagaActiva !== 'undefined' && rafagaActiva) {
-                                let sel = document.getElementById('rafaga-accion').value;
-                                let notas = document.getElementById('rafaga-detalles').value.trim();
-                                let recordatorioRafaga = document.getElementById('rafaga-recordatorio').value; 
-                                ejecutarAccion('Peso', dataLimpia + " Kg", "Automático (Ráfaga)", null);
-                                if(sel !== 'solo_peso') {
-                                    let producto = sel === 'OTRO' ? (document.getElementById('rafaga-prod-custom').value.trim() || 'Tratamiento General') : sel;
-                                    let detCompleto = (notas ? notas + " | " : "") + "Modo Ráfaga";
-                                    if (recordatorioRafaga !== "0") { detCompleto += ` | [RECORDATORIO:${recordatorioRafaga}]`; }
-                                    ejecutarAccion('Sanidad', producto, detCompleto, null);
-                                }
-                                if(typeof mostrarToast === 'function') mostrarToast(" ¡Guardado!");
-                            } else {
-                                forzarSaltoAFicha();
-                                if (typeof abrirModal === "function") abrirModal('modal-peso');
-                                let inputPeso = document.getElementById('i-peso-val');
-                                if (inputPeso) inputPeso.value = dataLimpia;
-                            }
-                        } else {
-                            alert(" Peso recibido: " + dataLimpia + " Kg. ¡Debes leer la caravana de un animal primero!");
-                        }
-                    } else {
-                        let tagLimpio = dataLimpia.replace(/TAG/gi, '');
-                        forzarSaltoAFicha();
-                        if (typeof window.recibirTagNFC === "function") { window.recibirTagNFC(tagLimpio); }
-                    }
-                }
-                bufferTeclado = "";
-                clearTimeout(timeoutTeclado);
-                return;
-            }
-            if (event.key.length === 1) {
-                bufferTeclado += event.key;
-                clearTimeout(timeoutTeclado);
-                timeoutTeclado = setTimeout(() =>{ bufferTeclado = ""; }, 500); 
-            }
-        });
+        // [Keydown manejado por Motor Universal Bluetooth & Hardware]
     
 
 
@@ -8601,7 +9221,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             }
             return [];
         };
-        function obtenerHistorial(caravana) { return window.obtenerHistorial(caravana); }
 
         window.guardarCambioCaravana = async function() {
             const elInput = document.getElementById('f-nueva-caravana');
@@ -8690,7 +9309,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
                 } catch(e) { console.warn("Sync rename warning:", e); }
             }
         };
-        function guardarCambioCaravana() { return window.guardarCambioCaravana(); }
 
         window.borrarCaravana = async function() {
             if (!rpActivo || rpActivo === '---') return;
@@ -8744,7 +9362,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
                 window.cambiarVista('v-dash', document.querySelectorAll('#sidebar .sidebar-nav li')[0]);
             }
         };
-        function borrarCaravana() { return window.borrarCaravana(); }
 
         window.editarConfinamientoActivo = function() {
             if (!rpActivo) return;
@@ -8779,7 +9396,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             if (typeof window.actualizarInformeAvanzado === 'function') window.actualizarInformeAvanzado();
             if (typeof window.mostrarToast === 'function') window.mostrarToast(`RP ${rpActivo} retirado de confinamiento.`);
         };
-        function finalizarConfinamiento() { return window.finalizarConfinamiento(); }
 
         window.verHistorial = function() {
             let rp = rpActivo;
@@ -8850,7 +9466,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             });
             contEl.innerHTML = h + "</ul>";
         };
-        function verHistorial() { return window.verHistorial(); }
         function verTrazabilidad() { return window.verHistorial(); }
         window.verTrazabilidad = window.verHistorial;
 
@@ -8908,7 +9523,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             if (document.getElementById('modal-historial')) window.cerrarModal('modal-historial');
             window.abrirModal('modal-editar-registro');
         };
-        function abrirEdicionRegistro(id, idx) { return window.abrirEdicionRegistro(id, idx); }
 
         window.guardarEdicionRegistro = async function() {
             let inputId = document.getElementById('edit-reg-id');
@@ -8978,7 +9592,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             if (typeof window.actualizarInformeAvanzado === 'function') window.actualizarInformeAvanzado();
             if (typeof window.cargarListaRegistro === 'function') window.cargarListaRegistro();
         };
-        function guardarEdicionRegistro() { return window.guardarEdicionRegistro(); }
 
         window.eliminarRegistroHistorial = async function(idParam, idxParam) {
             let id = idParam || (document.getElementById('edit-reg-id') ? document.getElementById('edit-reg-id').value : '');
@@ -9031,7 +9644,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             if (typeof window.actualizarInformeAvanzado === 'function') window.actualizarInformeAvanzado();
             if (typeof window.cargarListaRegistro === 'function') window.cargarListaRegistro();
         };
-        function eliminarRegistroHistorial(idParam, idxParam) { return window.eliminarRegistroHistorial(idParam, idxParam); }
 
 
         window.reporteResumenActual = {
@@ -9102,7 +9714,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
 
             window.actualizarInformeAvanzado();
         };
-        function cambiarModoReporte() { return window.cambiarModoReporte(); }
 
         window.actualizarInformeAvanzado = function() {
             const modoEl = document.getElementById('f-inf-modo');
@@ -9930,7 +10541,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
                 );
             }
         };
-        function actualizarInformeAvanzado() { return window.actualizarInformeAvanzado(); }
 
         window.cleanPDFText = function(text) {
             if (text === null || text === undefined) return '';
@@ -9938,7 +10548,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             str = str.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g, '');
             return str.replace(/\s+/g, ' ').trim();
         };
-        function cleanPDFText(text) { return window.cleanPDFText(text); }
 
         window.ejecutarDescargaPDF = function() {
             const btn = document.getElementById('btn-print-magico');
@@ -10122,29 +10731,9 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
                 }
             }, 150);
         };
-        function ejecutarDescargaPDF() { return window.ejecutarDescargaPDF(); }
 
 
-        window.conectarBluetoothBLE = async function() {
-            const btn = document.getElementById('btn-conectar-ble');
-            const lbl = document.getElementById('lbl-estado-bluetooth');
-            if (!navigator.bluetooth) {
-                alert("Para conectar el bastón o balanza en PC o móvil por Bluetooth HID, vinculalo desde la configuración Bluetooth de tu equipo; Taurus Track Pro capturará las lecturas automáticamente.");
-                return;
-            }
-            try {
-                if (btn) btn.innerText = "Buscando...";
-                const dev = await navigator.bluetooth.requestDevice({
-                    acceptAllDevices: true,
-                    optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e', '0000ffe0-0000-1000-8000-00805f9b34fb']
-                });
-                if (btn) btn.innerText = "Conectado";
-                if (lbl) { lbl.innerText = "Conectado: " + (dev.name || "Bastón / Balanza"); lbl.style.color = "var(--exito)"; }
-            } catch(e) {
-                if (btn) btn.innerText = "Conectar Bastón / Balanza";
-            }
-        };
-        function conectarBluetoothBLE() { return window.conectarBluetoothBLE(); }
+        // [conectarBluetoothBLE provisto por Motor Universal Bluetooth & Hardware]
 
 
 
@@ -10213,7 +10802,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             }
             window.actualizarVisualBotonRafaga();
         };
-        function verificarRafagaCustom() { return window.verificarRafagaCustom(); }
 
         window.abrirConfigRafaga = function() {
             const tarjeta = document.getElementById('tarjeta-rafaga');
@@ -10295,7 +10883,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
                 window.apagarModoRafaga();
             }
         };
-        function toggleRafaga() { return window.toggleRafaga(); }
 
                 const _origConectarBluetoothBLE = window.conectarBluetoothBLE;
         window.conectarBluetoothBLE = async function() {
@@ -10308,7 +10895,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
                 return await _origConectarBluetoothBLE();
             }
         };
-        function conectarBluetoothBLE() { return window.conectarBluetoothBLE(); }
 
         const _origEjecutarRafagaManual = window.ejecutarRafagaManual;
         window.ejecutarRafagaManual = function() {
@@ -10321,7 +10907,6 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
                 window.guardarYOcultarRafaga();
             }
         };
-        function ejecutarRafagaManual() { return window.ejecutarRafagaManual(); }
 
         document.addEventListener('click', function(ev) {
             const tarjeta = document.getElementById('tarjeta-rafaga');

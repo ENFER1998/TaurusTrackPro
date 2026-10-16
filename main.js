@@ -2,7 +2,28 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
+// Habilitar Web Bluetooth y características experimentales de Chromium en Windows / Linux / macOS
+app.commandLine.appendSwitch('enable-web-bluetooth');
+app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+app.commandLine.appendSwitch('enable-features', 'WebBluetooth,WebBluetoothNewPermissionsBackend');
+
 let mainWindow = null;
+let bleSelectCallback = null;
+let bleScanTimeout = null;
+
+function limpiarSeleccionBlePendiente(cancelar = false) {
+  if (bleScanTimeout) {
+    clearTimeout(bleScanTimeout);
+    bleScanTimeout = null;
+  }
+  if (cancelar && typeof bleSelectCallback === 'function') {
+    const cb = bleSelectCallback;
+    bleSelectCallback = null;
+    try { cb(''); } catch (e) {}
+  } else if (!cancelar) {
+    bleSelectCallback = null;
+  }
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -17,6 +38,52 @@ function createWindow() {
       sandbox: true,
       webSecurity: true,
       preload: path.join(__dirname, 'preload.js')
+    }
+  });
+
+  // Confirmar automáticamente emparejamientos BLE si el sistema operativo lo solicita
+  if (mainWindow.webContents.session && typeof mainWindow.webContents.session.setBluetoothPairingHandler === 'function') {
+    mainWindow.webContents.session.setBluetoothPairingHandler((details, callback) => {
+      callback({ confirmed: true });
+    });
+  }
+
+  // Selector inteligente de dispositivos Bluetooth BLE en Electron (Windows / Desktop)
+  mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
+    event.preventDefault();
+    bleSelectCallback = callback;
+
+    const lista = Array.isArray(deviceList) ? deviceList : [];
+
+    // 1. Prioridad máxima: encontrar "Taurus Track Pro" o periféricos ganaderos conocidos
+    const dispositivoTaurus = lista.find((d) => {
+      const nombre = String(d.deviceName || '').trim();
+      return /taurus|track\s*pro|baston|balanza|rfid|esp32|tru[\s-]*test|allflex|uart/i.test(nombre);
+    });
+
+    if (dispositivoTaurus) {
+      limpiarSeleccionBlePendiente(false);
+      console.log(`[Electron BLE] Conectando a: ${dispositivoTaurus.deviceName || dispositivoTaurus.deviceId}`);
+      callback(dispositivoTaurus.deviceId);
+      return;
+    }
+
+    // 2. Si aún está escaneando, programar un timeout de 10 segundos para elegir el mejor candidato o cancelar limpio
+    if (!bleScanTimeout) {
+      bleScanTimeout = setTimeout(() => {
+        if (typeof bleSelectCallback === 'function') {
+          const cb = bleSelectCallback;
+          bleSelectCallback = null;
+          bleScanTimeout = null;
+          // Si solo hay un dispositivo con nombre visible en el rango, seleccionarlo; si no, cancelar para permitir reintento
+          const conNombre = lista.find((d) => d.deviceName && !/^dispositivo desconocido|unknown/i.test(d.deviceName));
+          if (conNombre) {
+            try { cb(conNombre.deviceId); } catch (e) {}
+          } else {
+            try { cb(''); } catch (e) {}
+          }
+        }
+      }, 10000);
     }
   });
 
@@ -36,6 +103,11 @@ function createWindow() {
 
   mainWindow.loadFile('pc.html');
 }
+
+ipcMain.handle('cancelar-busqueda-ble', async () => {
+  limpiarSeleccionBlePendiente(true);
+  return { success: true };
+});
 
 ipcMain.handle('guardar-reporte-local', async (event, { base64Data, nombreSugerido, extension }) => {
   try {
@@ -65,5 +137,6 @@ ipcMain.handle('guardar-reporte-local', async (event, { base64Data, nombreSugeri
 app.whenReady().then(createWindow);
 
 app.on('window-all-closed', () => {
+  limpiarSeleccionBlePendiente(true);
   if (process.platform !== 'darwin') app.quit();
 });
