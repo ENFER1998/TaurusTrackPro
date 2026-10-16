@@ -1450,6 +1450,7 @@
                                 <div style="display:flex; gap:8px; margin-top:6px;">
                                     <span class="chip-cat" id="val-categoria">-</span>
                                     <span class="chip-lote" id="val-lote">-</span>
+                                    <span class="chip-lote" id="val-rfid-chip" style="background:rgba(16,185,129,0.15); color:var(--exito); border:1px solid rgba(16,185,129,0.4); font-weight:700; cursor:pointer;" onclick="window.abrirModalVincularRfidManual()" title="Clic para vincular o cambiar el chip RFID de esta caravana">🏷️ Sin Chip RFID</span>
                                 </div>
                             </div>
                         </div>
@@ -4428,6 +4429,12 @@ function procesarEventos() {
                 return;
             }
 
+            if (typeof window.resolverRpDesdeTag === 'function') {
+                const resBusq = window.resolverRpDesdeTag(rp);
+                if (resBusq && resBusq.encontrado && resBusq.rp) {
+                    rp = resBusq.rp;
+                }
+            }
             rp = rp.toUpperCase();
             rpActivo = rp;
             const inputBuscador = document.getElementById('buscador-caravana');
@@ -4440,9 +4447,27 @@ function procesarEventos() {
                 elFicha.style.display = 'block';
             }
 
-            // 2. Cabecera con número de caravana
+            // 2. Cabecera con número de caravana y chip RFID vinculado
             const elValCar = document.getElementById('val-caravana');
             if (elValCar) elValCar.innerText = rp;
+
+            const elRfidChip = document.getElementById('val-rfid-chip');
+            if (elRfidChip) {
+                const vincEvt = (typeof dbCache !== 'undefined' && Array.isArray(dbCache))
+                    ? [...dbCache].reverse().find(d => d && String(d.caravana || '').trim().toUpperCase() === rp && (d.accion === 'Vinculación RFID' || d.accion === 'Vinculacion_RFID') && d.valor)
+                    : null;
+                if (vincEvt && vincEvt.valor) {
+                    elRfidChip.innerText = '🏷️ RFID: ' + String(vincEvt.valor).trim().toUpperCase();
+                    elRfidChip.style.background = 'rgba(16,185,129,0.16)';
+                    elRfidChip.style.color = 'var(--exito)';
+                    elRfidChip.style.borderColor = 'rgba(16,185,129,0.45)';
+                } else {
+                    elRfidChip.innerText = '🏷️ Sin Chip RFID';
+                    elRfidChip.style.background = 'rgba(148,163,184,0.12)';
+                    elRfidChip.style.color = 'var(--muted)';
+                    elRfidChip.style.borderColor = 'var(--borde)';
+                }
+            }
 
             const regs = typeof window.obtenerHistorial === 'function' ? window.obtenerHistorial(rp) : [];
 
@@ -4859,7 +4884,7 @@ function procesarEventos() {
             rpActivo = rp;
             abrirModal('m-traza'); 
             let lista = typeof obtenerHistorial === 'function' ? obtenerHistorial(rp) : [];
-            let filtrados = lista.filter(r =>r && esEventoGanaderoValido(r) && !String(r.accion || '').includes('Vinculacion') && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
+            let filtrados = lista.filter(r =>r && esEventoGanaderoValido(r) && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
 
             let tb = document.getElementById('tb-traza');
             if (!tb) return;
@@ -4902,7 +4927,7 @@ function procesarEventos() {
             }
             if (!reg && rp) {
                 let regsAnimal = typeof obtenerHistorial === 'function' ? obtenerHistorial(rp) : [];
-                let filtrados = regsAnimal.filter(r =>r && esEventoGanaderoValido(r) && !String(r.accion || '').includes('Vinculacion') && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
+                let filtrados = regsAnimal.filter(r =>r && esEventoGanaderoValido(r) && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
                 if (idx !== undefined && idx !== null && filtrados[idx]) {
                     reg = filtrados[idx];
                 } else if (id) {
@@ -6290,8 +6315,10 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
                 } else if (item.esMuerto) {
                     badgeEstado = `<span class="badge" style="background:var(--danger); color:white; font-size:10px; padding:2px 6px; border-radius:4px; margin-left:8px;">MUERTE</span>`;
                 }
+                const vincRow = (dbCache || []).slice().reverse().find(d => d && String(d.caravana || '').trim().toUpperCase() === String(item.car).trim().toUpperCase() && (d.accion === 'Vinculación RFID' || d.accion === 'Vinculacion_RFID') && d.valor);
+                const badgeRfidRow = vincRow ? `<span class="badge" style="background:rgba(16,185,129,0.15); color:var(--exito); border:1px solid rgba(16,185,129,0.4); font-size:10.5px; padding:2px 7px; border-radius:4px; margin-left:8px; font-weight:700;">🏷️ RFID: ${window.escapeHTML(String(vincRow.valor).toUpperCase())}</span>` : '';
                 htmlHTML += `<tr onclick="navegarDesdeLista('${item.car}')">
-                    <td style="color:var(--text-main);"><strong>${item.car}</strong>${badgeEstado}</td>
+                    <td style="color:var(--text-main);"><strong>${item.car}</strong>${badgeEstado}${badgeRfidRow}</td>
                     <td style="color:var(--text-main);">${item.catLegible}</td>
                     <td style="color:var(--text-main);">${item.lote}</td>
                     <td style="color:var(--text-main);">${item.dx}</td>
@@ -6605,20 +6632,67 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
             }
         };
 
+        if (typeof forzarSaltoAFicha === 'function' && !window.forzarSaltoAFicha) window.forzarSaltoAFicha = forzarSaltoAFicha;
+        if (typeof abrirModal === 'function' && !window.abrirModal) window.abrirModal = abrirModal;
+        if (typeof cerrarModal === 'function' && !window.cerrarModal) window.cerrarModal = cerrarModal;
+        if (typeof mostrarToast === 'function' && !window.mostrarToast) window.mostrarToast = mostrarToast;
+
+        window.abrirModalVincularRfidManual = function() {
+            if (!rpActivo || rpActivo === '---') return;
+            const vincEvt = (typeof dbCache !== 'undefined' && Array.isArray(dbCache))
+                ? [...dbCache].reverse().find(d => d && String(d.caravana || '').trim().toUpperCase() === String(rpActivo).toUpperCase() && (d.accion === 'Vinculación RFID' || d.accion === 'Vinculacion_RFID') && d.valor)
+                : null;
+            const chipActual = vincEvt ? String(vincEvt.valor).trim().toUpperCase() : '';
+            const nuevoChip = prompt(`Caravana RP ${rpActivo}\nChip RFID actual: ${chipActual || 'Ninguno'}\n\nEscriba el código RFID que desea vincular a la caravana ${rpActivo}:`, chipActual);
+            if (nuevoChip && nuevoChip.trim().length >= 2) {
+                rfidPendiente = nuevoChip.trim().toUpperCase();
+                window.finalizarVinculacionConRP(rpActivo);
+            }
+        };
+
         window.finalizarVinculacionConRP = function(rpElegido) {
-            const rp = String(rpElegido || "").trim().toUpperCase();
+            const selEl = document.getElementById('sel-rfid-rp-existente');
+            const inputCar = document.getElementById('f-rfid-caravana');
+            const rpRaw = rpElegido || (inputCar && inputCar.value.trim()) || (selEl && selEl.value.trim()) || '';
+            const rp = String(rpRaw || "").trim().toUpperCase();
             if (!rp) {
-                alert("Por favor ingrese el número de RP / Caravana.");
+                alert("Por favor seleccione o escriba el número de Caravana (RP).");
+                if (inputCar) inputCar.focus();
                 return;
             }
-            const chip = String(rfidPendiente || rp).trim();
+            const chip = String(rfidPendiente || rp).trim().toUpperCase();
             rpActivo = rp;
 
-            if (chip && chip.toUpperCase() !== rp) {
-                window.ejecutarAccion('Vinculación RFID', chip.toLowerCase(), `Chip vinculado: ${chip}`, 'modal-rfid');
-            } else {
-                if (typeof window.cerrarModal === 'function') window.cerrarModal('modal-rfid');
+            // Si ese mismo código RFID estaba vinculado antes a otro RP de prueba, actualizarlo al nuevo RP
+            if (typeof dbCache !== 'undefined' && Array.isArray(dbCache) && chip) {
+                const chipLow = chip.toLowerCase();
+                for (let i = dbCache.length - 1; i >= 0; i--) {
+                    const item = dbCache[i];
+                    if (item && (item.accion === 'Vinculación RFID' || item.accion === 'Vinculacion_RFID')) {
+                        if (String(item.valor || '').trim().toLowerCase() === chipLow || String(item.caravana || '').trim().toUpperCase() === rp) {
+                            dbCache.splice(i, 1);
+                        }
+                    }
+                }
+                historiaCache = null;
+                activosCache = null;
             }
+
+            if (chip) {
+                if (typeof window.ejecutarAccion === 'function') {
+                    window.ejecutarAccion('Vinculación RFID', chip.toLowerCase(), `Chip RFID vinculado: ${chip}`, 'modal-rfid');
+                } else if (typeof ejecutarAccion === 'function') {
+                    ejecutarAccion('Vinculación RFID', chip.toLowerCase(), `Chip RFID vinculado: ${chip}`, 'modal-rfid');
+                }
+            }
+
+            // Cerrar modal de forma garantizada en PC y Móvil
+            const modalEl = document.getElementById('modal-rfid');
+            if (modalEl) {
+                modalEl.classList.add('oculto');
+                modalEl.style.display = 'none';
+            }
+            if (typeof window.cerrarModal === 'function') window.cerrarModal('modal-rfid');
 
             const pesoPend = window.pesoPendienteRFID;
             window.pesoPendienteRFID = null;
@@ -6632,16 +6706,18 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
                 let aplicoExtra = window.aplicarAccionRafagaActiva("Modo Ráfaga Bluetooth");
                 window.emitirBeepHardware('combo');
                 if (typeof window.mostrarToast === 'function') {
-                    window.mostrarToast(`RP ${rp} vinculado y pesado: ${pStr}` + (aplicoExtra ? ' + Ráfaga' : ''));
+                    window.mostrarToast(`✅ Chip ${chip} -> RP ${rp} (${pStr})` + (aplicoExtra ? ' + Ráfaga' : ''));
                 }
             } else {
                 let aplicoExtra = window.aplicarAccionRafagaActiva("Modo Ráfaga Bluetooth");
                 if (typeof window.mostrarToast === 'function') {
-                    window.mostrarToast(`Chip vinculado al RP ${rp}` + (aplicoExtra ? ' + Ráfaga aplicada' : ''));
+                    window.mostrarToast(`✅ Chip ${chip} vinculado a Caravana RP ${rp}` + (aplicoExtra ? ' + Ráfaga' : ''));
                 }
             }
 
-            window.forzarSaltoAFicha();
+            if (typeof window.forzarSaltoAFicha === 'function') window.forzarSaltoAFicha();
+            else if (typeof forzarSaltoAFicha === 'function') forzarSaltoAFicha();
+
             const buscador = document.getElementById('buscador-caravana');
             if (buscador) buscador.value = rp;
             if (typeof window.buscarCaravanaBtn === 'function') window.buscarCaravanaBtn(rp);
@@ -9510,7 +9586,7 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             window.abrirModal('modal-historial');
 
             let lista = window.obtenerHistorial(rp);
-            let filtrados = lista.filter(r => r && window.esEventoGanaderoValido(r) && !String(r.accion || '').includes('Vinculacion') && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
+            let filtrados = lista.filter(r => r && window.esEventoGanaderoValido(r) && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
 
             let contEl = document.getElementById('contenido-historial');
             if (!contEl) return;
@@ -9572,7 +9648,7 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             }
             if (!reg && rp) {
                 let lista = window.obtenerHistorial(rp);
-                let filtrados = lista.filter(r => r && window.esEventoGanaderoValido(r) && !String(r.accion || '').includes('Vinculacion') && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
+                let filtrados = lista.filter(r => r && window.esEventoGanaderoValido(r) && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
                 if (idx !== undefined && idx !== null && filtrados[idx]) {
                     reg = filtrados[idx];
                 } else if (id) {
@@ -9638,7 +9714,7 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             let i = dbCache.findIndex(r => r && String(r.id) === String(id));
             if (i === -1 && rpActivo && window._editandoRegIdx !== undefined) {
                 let lista = window.obtenerHistorial(rpActivo);
-                let filtrados = lista.filter(r => r && window.esEventoGanaderoValido(r) && !String(r.accion || '').includes('Vinculacion') && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
+                let filtrados = lista.filter(r => r && window.esEventoGanaderoValido(r) && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
                 let targetObj = filtrados[window._editandoRegIdx];
                 if (targetObj) {
                     i = dbCache.indexOf(targetObj);
@@ -9696,7 +9772,7 @@ Se encontraron ${matches.length} registro(s) pertenecientes a la caravana "${car
             let i = id ? dbCache.findIndex(r => r && String(r.id) === String(id)) : -1;
             if (i === -1 && rpActivo && idx !== undefined && idx !== null) {
                 let lista = window.obtenerHistorial(rpActivo);
-                let filtrados = lista.filter(r => r && window.esEventoGanaderoValido(r) && !String(r.accion || '').includes('Vinculacion') && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
+                let filtrados = lista.filter(r => r && window.esEventoGanaderoValido(r) && !['Alta Operador', 'Edición Operador', 'Baja Operador'].includes(r.accion));
                 let targetObj = filtrados[idx];
                 if (targetObj) {
                     i = dbCache.indexOf(targetObj);
