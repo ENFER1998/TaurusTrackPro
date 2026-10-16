@@ -2108,7 +2108,7 @@
     
     <div id="modal-comentario" class="modal"><div class="modal-body"><span class="cerrar" onclick="cerrarModal('modal-comentario')">&times;</span><h3>Anotación General</h3><div class="form-grupo"><textarea class="form-control textarea" id="f-comentario-txt"></textarea></div><button class="btn-guardar" onclick="prepararGuardado('modal-comentario', 'Comentario')">Guardar Nota</button></div></div>
     
-    <div id="modal-rfid" class="modal"><div class="modal-body"><span class="cerrar" onclick="cerrarModal('modal-rfid')">&times;</span><h3>Vincular Bastón RFID</h3><p style="font-size:12px; color:var(--muted); margin-bottom:10px;">Chip <strong id="lbl-rfid-scaneado" style="color:var(--secundario);"></strong> no asignado a un RP visual.</p><p id="lbl-rfid-peso-pendiente" style="font-size:12px; color:var(--exito); font-weight:700; margin-bottom:12px; display:none;"></p><div class="form-grupo"><input type="text" class="form-control" id="f-rfid-caravana" placeholder="Ingrese RP (Ej: 1234)" style="text-align: center; font-size: 20px; font-weight: bold;" onkeyup="if(event.key === 'Enter') guardarVinculacionRFID()"></div><button class="btn-guardar" onclick="guardarVinculacionRFID()">Vincular y Abrir Ficha</button><button type="button" class="btn" style="width:100%; margin-top:8px; background:var(--superficie-sub); color:var(--texto); border:1px solid var(--borde-fuerte); padding:10px; border-radius:10px; font-size:12px; font-weight:700;" onclick="usarChipComoRP()">Usar código del Chip directamente como RP</button></div></div>
+    <div id="modal-rfid" class="modal" style="z-index:99999;"><div class="modal-body"><span class="cerrar" onclick="cerrarModal('modal-rfid')">&times;</span><h3>Vincular Código RFID a Caravana (RP)</h3><p style="font-size:12.5px; color:var(--muted); margin-bottom:10px;">Nuevo chip RFID detectado: <strong id="lbl-rfid-scaneado" style="color:var(--secundario); font-size:14px;"></strong>.<br> asígnale el número de Caravana (RP) del animal para que queden vinculados:</p><p id="lbl-rfid-peso-pendiente" style="font-size:12.5px; color:var(--exito); font-weight:700; margin-bottom:12px; display:none;"></p><div class="form-grupo" style="margin-bottom:10px;"><label style="font-size:11.5px; color:var(--muted);">Elegir Caravana (RP) existente en el rodeo:</label><select id="sel-rfid-rp-existente" class="form-control" onchange="if(this.value){ document.getElementById('f-rfid-caravana').value = this.value; }"><option value="">-- Seleccionar RP existente o escribir abajo --</option></select></div><div class="form-grupo"><label style="font-size:11.5px; color:var(--muted);">Número de Caravana (RP) *:</label><input type="text" class="form-control" id="f-rfid-caravana" placeholder="Escriba el RP de la caravana (Ej: 104)" style="text-align: center; font-size: 20px; font-weight: bold;" onkeyup="if(event.key === 'Enter') guardarVinculacionRFID()"></div><button class="btn-guardar" onclick="guardarVinculacionRFID()">Vincular Chip a esta Caravana (RP)</button></div></div>
     
     <div id="m-perfil" class="modal">
         <div class="modal-body">
@@ -6535,6 +6535,20 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
         window.ultimoDatoHardwareMs = 0;
         window.iosModoHidActivo = false;
 
+        // Purgar cachés viejos de Service Worker una vez para garantizar carga del nuevo motor Bluetooth
+        try {
+            if (localStorage.getItem('taurus_ble_v16_purged') !== '1') {
+                localStorage.setItem('taurus_ble_v16_purged', '1');
+                if ('caches' in window) {
+                    caches.keys().then(function(ks) { ks.forEach(function(k) { caches.delete(k); }); }).catch(function(){});
+                }
+                if (navigator.serviceWorker && navigator.serviceWorker.getRegistrations) {
+                    navigator.serviceWorker.getRegistrations().then(function(rs) { rs.forEach(function(r) { r.unregister(); }); }).catch(function(){});
+                }
+            }
+        } catch(e) {}
+
+
         window.resolverRpDesdeTag = function(tagRaw) {
             let limpio = String(tagRaw || "").trim();
             let norm = limpio.toLowerCase();
@@ -6653,6 +6667,59 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
             window.finalizarVinculacionConRP(chip);
         };
 
+        window.enfocarTrampaHid = function() {
+            try {
+                let trap = document.getElementById('taurus-hid-trap');
+                if (!trap && document.body && typeof document.createElement === 'function') {
+                    trap = document.createElement('input');
+                    trap.type = 'text';
+                    trap.id = 'taurus-hid-trap';
+                    trap.setAttribute('inputmode', 'none');
+                    trap.setAttribute('autocomplete', 'off');
+                    trap.setAttribute('autocorrect', 'off');
+                    trap.setAttribute('autocapitalize', 'off');
+                    trap.setAttribute('spellcheck', 'false');
+                    trap.style.cssText = 'position:fixed; top:50%; left:0; width:1px; height:1px; opacity:0.01; border:none; padding:0; margin:0; background:transparent; color:transparent; outline:none; z-index:-1;';
+                    trap.addEventListener('input', function() {
+                        clearTimeout(window._timerTrapHid);
+                        const v = String(trap.value || '');
+                        if (v.includes('\n') || v.includes('\r')) {
+                            const limpia = v.trim();
+                            trap.value = '';
+                            if (limpia.length >= 2) {
+                                window.marcarBluetoothHidActivo();
+                                window.procesarDatoHardware(limpia);
+                            }
+                            return;
+                        }
+                        window._timerTrapHid = setTimeout(function() {
+                            const limpia = String(trap.value || '').trim();
+                            if (limpia.length >= 3) {
+                                trap.value = '';
+                                window.marcarBluetoothHidActivo();
+                                window.procesarDatoHardware(limpia);
+                            }
+                        }, 180);
+                    });
+                    document.body.appendChild(trap);
+                }
+                const act = document.activeElement;
+                const enInputReal = act && act.id !== 'taurus-hid-trap' && (act.tagName === 'INPUT' || act.tagName === 'TEXTAREA' || act.tagName === 'SELECT');
+                if (trap && !enInputReal && typeof trap.focus === 'function') {
+                    trap.focus({ preventScroll: true });
+                }
+            } catch(e) {}
+        };
+
+        document.addEventListener('click', function(ev) {
+            const t = ev.target;
+            if (!t) return;
+            const tag = t.tagName;
+            if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+                setTimeout(function() { window.enfocarTrampaHid(); }, 60);
+            }
+        });
+
         window.recibirTagNFC = function(tagHex, pesoOpcional = null) {
             let limpio = String(tagHex || "").trim();
             if (!limpio) return;
@@ -6699,7 +6766,23 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
                         lblPesoPend.innerText = '';
                     }
                 }
-                if (typeof window.abrirModal === "function") window.abrirModal('modal-rfid');
+                try {
+                    const selRp = document.getElementById('sel-rfid-rp-existente');
+                    if (selRp && typeof dbCache !== 'undefined' && Array.isArray(dbCache)) {
+                        const rpsUnicos = [...new Set(dbCache.map(d => d && d.caravana ? String(d.caravana).trim() : '').filter(c => c && window.esCaravanaValida(c) && !window.esAnimalArchivado(c)))].sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+                        selRp.innerHTML = '<option value="">-- Seleccionar RP existente (' + rpsUnicos.length + ' en rodeo) o escribir abajo --</option>' +
+                            rpsUnicos.map(r => `<option value="${window.escapeHTML(r)}">RP: ${window.escapeHTML(r)}</option>`).join('');
+                    }
+                } catch(e) {}
+                if (typeof window.abrirModal === "function") {
+                    window.abrirModal('modal-rfid');
+                } else {
+                    const m = document.getElementById('modal-rfid');
+                    if (m) { m.classList.remove('oculto'); m.style.display = 'flex'; }
+                }
+                if (typeof window.mostrarToast === "function") {
+                    window.mostrarToast(`Nuevo chip RFID ${limpio}: asígnale su Caravana (RP)`);
+                }
                 setTimeout(() => { if (inputVincular) inputVincular.focus(); }, 350);
             }
         };
@@ -6817,13 +6900,12 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
                     return false;
                 }
 
-                // Si el chip RFID aún no fue vinculado a ningún RP y NO está en modo Ráfaga automática,
-                // abrir el modal de vinculación conservando el peso para guardarlo al instante de vincular;
-                // Si está en Modo Ráfaga (o ya está vinculado), registrar directo sin interrumpir la manga.
-                if (!res.encontrado && (typeof rafagaActiva === 'undefined' || !rafagaActiva)) {
-                    window.emitirBeepHardware('combo');
+                // Si el chip RFID es nuevo y aún no está vinculado a ninguna caravana (RP),
+                // abrir SIEMPRE el modal para asignarle su Caravana (RP) y guardar el peso/ráfaga al confirmar.
+                if (!res.encontrado) {
+                    window.emitirBeepHardware('rfid');
                     window.forzarSaltoAFicha();
-                    window.recibirTagNFC(rpFinal, pesoExtraido);
+                    window.recibirTagNFC(String(rpExtraido).trim(), pesoExtraido);
                     return true;
                 }
 
@@ -6914,12 +6996,14 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
             if (typeof window.mostrarToast === 'function') window.mostrarToast("Dispositivo Bluetooth desconectado.");
         }
 
+        var _bleFlushTimeout = null;
         function onBleCharacteristicValueChanged(event) {
             try {
                 const dec = new TextDecoder('utf-8');
                 const chunk = dec.decode(event.target.value);
                 if (bleBuffer.length > 1024) bleBuffer = "";
                 bleBuffer += chunk;
+                clearTimeout(_bleFlushTimeout);
                 if (bleBuffer.includes('\n') || bleBuffer.includes('\r')) {
                     const lineas = bleBuffer.split(/[\r\n]+/);
                     bleBuffer = lineas.pop() || "";
@@ -6929,6 +7013,15 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
                             window.procesarDatoHardware(limpia);
                         }
                     });
+                }
+                if (bleBuffer.trim().length > 0) {
+                    _bleFlushTimeout = setTimeout(function() {
+                        const pendiente = bleBuffer.trim();
+                        bleBuffer = "";
+                        if (pendiente.length > 0 && typeof window.procesarDatoHardware === 'function') {
+                            window.procesarDatoHardware(pendiente);
+                        }
+                    }, 120);
                 }
             } catch(err) {
                 console.warn("[BLE Stream Decode Error]:", err);
@@ -6952,6 +7045,7 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
             // 2. Soporte específico iOS Safari / WebKit (donde Apple no expone navigator.bluetooth)
             if (!navigator.bluetooth) {
                 window.iosModoHidActivo = !window.iosModoHidActivo;
+                window.enfocarTrampaHid();
                 if (window.iosModoHidActivo) {
                     if (btn) btn.innerText = "Modo iOS Activo";
                     if (lbl) {
