@@ -5,17 +5,15 @@
  * Placa objetivo: ESP32-C3 Super Mini
  * Nombre Bluetooth: "Taurus Track Pro"
  *
- * CARACTERÍSTICAS:
- * 1. Conexión inmediata y estable en Windows (Electron), iOS (Safari) y Android
- *    manteniendo la firma BLE original (+6 y ESP_BLE_ID_KEY_MASK).
- * 2. Envío de los 4 códigos RFID fijos en ciclo (001 al 004 y vuelve al 001)
- *    con un toque corto entre GPIO 9 y GND.
- * 3. Soporte de teclado en iPhone (Report ID 2, Usage 0x01AE "AL Keyboard Layout"):
- *    - Se envía automáticamente 650 ms después de cada lectura RFID y 1,2 s
- *      después de conectar.
- *    - También puedes activarlo manualmente manteniendo GPIO 9 con GND por 0,6 s.
- * 4. Funciona en Modo Independiente (solo RFID) y en Modo Combinado (RFID + Peso
- *    por ESP-NOW desde el segundo ESP32 de la balanza).
+ * CONFIGURACIÓN PROBADA Y ESTABLE (WINDOWS ELECTRON, iOS SAFARI Y ANDROID):
+ * 1. Servicio GATT Nordic UART (6E400001-...) con descriptor 0x2902 explícito
+ *    y envío en fragmentos <= 18 bytes tras ventana de silencio RF de 40 ms.
+ * 2. Servicio BLE HID Teclado (0x1812) de 1 solo reporte estándar (Report ID 1)
+ *    que enlaza de inmediato tanto en iOS como en PC sin desbordar la tabla GATT.
+ * 3. Pin 9 (GPIO 9 a GND / botón BOOT): Cicla entre los 4 códigos RFID fijos
+ *    de prueba (982000123456001 al 982000123456004 y vuelve al 001).
+ * 4. Funciona tanto en Modo Independiente (solo Lector RFID encendido) como en
+ *    Modo Combinado (recibiendo el peso del segundo ESP32 por ESP-NOW).
  *
  * Configuración en Arduino IDE:
  * - Board: "ESP32C3 Dev Module" o "LOLIN C3 Mini"
@@ -42,11 +40,11 @@ constexpr int PIN_RFID_RX    = 4;   // RX para módulo lector RFID UART (ej. WL-
 constexpr int PIN_RFID_TX    = 5;   // TX para módulo lector RFID UART
 
 // ==================== TIEMPOS DE DETECCIÓN AUTOMÁTICA ====================
-constexpr unsigned long TIEMPO_ESPERA_ACK_BALANZA_MS  = 180;
-constexpr unsigned long TIEMPO_MAX_ESPERA_PESO_MS     = 20000;
-constexpr unsigned long VENTANA_HEARTBEAT_ACTIVO_MS   = 5000;
-constexpr unsigned long COOLDOWN_MISMA_CARAVANA_MS    = 2000;
-constexpr unsigned long TIEMPO_PULSACION_LARGA_KBD_MS = 600;
+constexpr unsigned long TIEMPO_ESPERA_ACK_BALANZA_MS = 180;
+constexpr unsigned long TIEMPO_MAX_ESPERA_PESO_MS    = 20000;
+constexpr unsigned long VENTANA_HEARTBEAT_ACTIVO_MS  = 5000;
+constexpr unsigned long COOLDOWN_MISMA_CARAVANA_MS   = 2000;
+constexpr unsigned long DEBOUNCE_MS                  = 350;
 
 // ==================== CONFIGURACIÓN ESP-NOW ====================
 constexpr uint8_t ESPNOW_WIFI_CHANNEL = 1;
@@ -72,9 +70,8 @@ constexpr const char* SERVICE_UUID    = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 constexpr const char* CHAR_UUID_RX    = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 constexpr const char* CHAR_UUID_TX    = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
 
-// Mapa HID con Report ID 1 (Teclado estándar) + Report ID 2 (Consumer Control 0x01AE AL Keyboard Layout para iOS BLE)
+// Mapa HID estándar de 1 reporte (Report ID 1: Teclado) que enlaza sin fallos en iOS, Android y Windows
 static const uint8_t TAURUS_HID_REPORT_MAP[] = {
-  // Report ID 1: Teclado estándar
   0x05, 0x01,       // Usage Page (Generic Desktop)
   0x09, 0x06,       // Usage (Keyboard)
   0xA1, 0x01,       // Collection (Application)
@@ -107,19 +104,6 @@ static const uint8_t TAURUS_HID_REPORT_MAP[] = {
   0x19, 0x00,       //   Usage Minimum (0)
   0x29, 0x65,       //   Usage Maximum (101)
   0x81, 0x00,       //   Input (Data, Array) - Key array (6 bytes)
-  0xC0,             // End Collection
-
-  // Report ID 2: Consumer Control (Usage 0x01AE "AL Keyboard Layout" - Mostrar/Ocultar Teclado Virtual en iOS BLE)
-  0x05, 0x0C,       // Usage Page (Consumer)
-  0x09, 0x01,       // Usage (Consumer Control)
-  0xA1, 0x01,       // Collection (Application)
-  0x85, 0x02,       //   Report ID (2)
-  0x15, 0x00,       //   Logical Minimum (0)
-  0x25, 0x01,       //   Logical Maximum (1)
-  0x75, 0x01,       //   Report Size (1)
-  0x95, 0x01,       //   Report Count (1)
-  0x0A, 0xAE, 0x01, //   Usage (AL Keyboard Layout = 0x01AE)
-  0x81, 0x06,       //   Input (Data, Value, Relative, Bit Field)
   0xC0              // End Collection
 };
 
@@ -128,7 +112,6 @@ BLECharacteristic* pTxCharacteristic = nullptr;
 BLEHIDDevice* pHidDevice = nullptr;
 BLECharacteristic* pHidInputReport = nullptr;
 BLECharacteristic* pHidOutputReport = nullptr;
-BLECharacteristic* pHidConsumerReport = nullptr;
 
 volatile bool bleClienteConectado = false;
 bool bleClienteConectadoPrevio = false;
@@ -152,16 +135,8 @@ volatile bool balanzaVistaAlgunaVez = false;
 PaqueteGanado ultimoPaqueteRecibido;
 PaqueteGanado paqueteRfidEnCurso;
 
-// Gestión de botón GPIO 9 y reactivación de teclado iOS
-bool botonPresionado = false;
-bool accionLargaEjecutada = false;
-unsigned long tiempoInicioBoton = 0;
+unsigned long ultimoTiempoBoton = 0;
 unsigned long ultimoDestelloBle = 0;
-
-bool pendienteRestaurarTecladoTrasScan = false;
-unsigned long tiempoEnvioHidMs = 0;
-bool pendienteRestaurarTecladoAlConectar = false;
-unsigned long tiempoConexionBleMs = 0;
 
 // 4 códigos RFID fijos en ciclo (1 -> 2 -> 3 -> 4 -> 1...) para probar vinculación y reconocimiento de RP
 constexpr const char* CODIGOS_RFID_PRUEBA[4] = {
@@ -180,7 +155,6 @@ size_t idxRfidUart = 0;
 unsigned long ultimoByteRfidMs = 0;
 
 void registrarNuevaCaravana(const char* rawRfid);
-void alternarTecladoPantallaIos();
 
 // ==================== CALLBACKS SERVIDOR BLE ====================
 class ServidorBleCallbacks : public BLEServerCallbacks {
@@ -205,8 +179,6 @@ class RxUartCallbacks : public BLECharacteristicCallbacks {
     if (valor.indexOf("MODE:UART") >= 0 || valor.indexOf("TAURUS") >= 0) {
       modoUartSolicitadoPorApp = true;
       Serial.println("[BLE] Modo GATT UART directo confirmado por la aplicación.");
-    } else if (valor.indexOf("KBD") >= 0 || valor.indexOf("TECLADO") >= 0) {
-      alternarTecladoPantallaIos();
     } else if (valor.startsWith("SIM:")) {
       String tag = valor.substring(4);
       tag.trim();
@@ -217,21 +189,7 @@ class RxUartCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
-// ==================== ENVÍO HID TECLADO Y AL KEYBOARD LAYOUT (PARA iOS BLE) ====================
-void alternarTecladoPantallaIos() {
-  if (pHidConsumerReport == nullptr || !bleClienteConectado) return;
-  Serial.println("[iOS HID] Enviando comando AL Keyboard Layout (0x01AE) para mostrar/ocultar el teclado del iPhone...");
-  uint8_t pressToggle[1] = {0x01};
-  pHidConsumerReport->setValue(pressToggle, sizeof(pressToggle));
-  pHidConsumerReport->notify();
-  delay(35);
-
-  uint8_t releaseToggle[1] = {0x00};
-  pHidConsumerReport->setValue(releaseToggle, sizeof(releaseToggle));
-  pHidConsumerReport->notify();
-  delay(35);
-}
-
+// ==================== ENVÍO HID TECLADO (PARA SAFARI EN iOS) ====================
 bool mapearCaracterAHid(char c, uint8_t& keycode, uint8_t& modifier) {
   modifier = 0x00;
   keycode = 0x00;
@@ -312,10 +270,6 @@ void enviarTextoPorHid(const char* trama) {
   if (!enterEnviado) {
     enviarTeclaHid(0x28, 0x00);
   }
-
-  // Programar pulso 0x01AE tras 650 ms (cuando el modal de nuevo chip ya enfocó el input en Safari)
-  pendienteRestaurarTecladoTrasScan = true;
-  tiempoEnvioHidMs = millis();
 }
 
 // ==================== CALLBACKS ESP-NOW ====================
@@ -499,7 +453,7 @@ void registrarNuevaCaravana(const char* rawRfid) {
 void renovarMacParaEvitarCacheGatt() {
   uint8_t macBase[6] = {0};
   esp_efuse_mac_get_default(macBase);
-  macBase[5] = (uint8_t)((macBase[5] + 6) & 0xFE);
+  macBase[5] = (uint8_t)((macBase[5] + 8) & 0xFE);
   esp_base_mac_addr_set(macBase);
 }
 
@@ -535,11 +489,10 @@ void inicializarBle() {
 
   pUartService->start();
 
-  // 2. Servicio HID (0x1812) con Report ID 1 (Teclado) y Report ID 2 (Consumer 0x01AE AL Keyboard Layout para iPhone)
+  // 2. Servicio HID (0x1812) de 1 reporte estándar (Teclado) para iOS Safari
   pHidDevice = new BLEHIDDevice(pServer);
   pHidInputReport = pHidDevice->inputReport(1);
   pHidOutputReport = pHidDevice->outputReport(1);
-  pHidConsumerReport = pHidDevice->inputReport(2);
   pHidDevice->manufacturer()->setValue("Taurus Track Pro");
   pHidDevice->pnp(0x02, 0xe502, 0xa111, 0x0210);
   pHidDevice->hidInfo(0x00, 0x02);
@@ -607,13 +560,7 @@ void procesarEntradaUsbNoBloqueante() {
       if (idxUsb > 0) {
         bufferUsb[idxUsb] = '\0';
         idxUsb = 0;
-        String cmd = String(bufferUsb);
-        cmd.trim();
-        if (cmd.equalsIgnoreCase("TECLADO") || cmd.equalsIgnoreCase("KBD")) {
-          alternarTecladoPantallaIos();
-        } else {
-          registrarNuevaCaravana(bufferUsb);
-        }
+        registrarNuevaCaravana(bufferUsb);
       }
     } else if (idxUsb < sizeof(bufferUsb) - 1) {
       bufferUsb[idxUsb++] = c;
@@ -676,49 +623,17 @@ void loop() {
     BLEDevice::startAdvertising();
     Serial.println("[BLE] Dispositivo desconectado. Volviendo a anunciar 'Taurus Track Pro'...");
     bleClienteConectadoPrevio = bleClienteConectado;
-    pendienteRestaurarTecladoAlConectar = false;
-    pendienteRestaurarTecladoTrasScan = false;
   }
   if (bleClienteConectado && !bleClienteConectadoPrevio) {
     Serial.println("[BLE] Dispositivo conectado a 'Taurus Track Pro'.");
     bleClienteConectadoPrevio = bleClienteConectado;
     parpadearLed(2, 120);
-    pendienteRestaurarTecladoAlConectar = true;
-    tiempoConexionBleMs = millis();
   }
 
-  if (pendienteRestaurarTecladoAlConectar && (ahora - tiempoConexionBleMs >= 1200)) {
-    pendienteRestaurarTecladoAlConectar = false;
-    if (!modoUartSolicitadoPorApp) {
-      alternarTecladoPantallaIos();
-    }
-  }
-
-  if (pendienteRestaurarTecladoTrasScan && (ahora - tiempoEnvioHidMs >= 650)) {
-    pendienteRestaurarTecladoTrasScan = false;
-    if (!modoUartSolicitadoPorApp) {
-      alternarTecladoPantallaIos();
-    }
-  }
-
-  // 1. GESTIÓN DEL BOTÓN BOOT (GPIO 9 a GND):
-  //    - Toque corto (< 0.6s): Envía el siguiente código RFID de los 4 fijos (001 al 004).
-  //    - Mantener presionado (>= 0.6s): Envía 0x01AE (AL Keyboard Layout) para mostrar/ocultar el teclado en iPhone.
-  bool estadoPinBajo = (digitalRead(PIN_BTN_TEST) == LOW);
-  if (estadoPinBajo && !botonPresionado) {
-    botonPresionado = true;
-    accionLargaEjecutada = false;
-    tiempoInicioBoton = ahora;
-  } else if (estadoPinBajo && botonPresionado) {
-    if (!accionLargaEjecutada && (ahora - tiempoInicioBoton >= TIEMPO_PULSACION_LARGA_KBD_MS)) {
-      accionLargaEjecutada = true;
-      alternarTecladoPantallaIos();
-      parpadearLed(3, 50);
-    }
-  } else if (!estadoPinBajo && botonPresionado) {
-    unsigned long duracion = ahora - tiempoInicioBoton;
-    botonPresionado = false;
-    if (!accionLargaEjecutada && duracion >= 40) {
+  // 1. PRUEBA CON PIN 9 (GPIO 9 a GND): Cicla entre los 4 códigos RFID fijos (001 al 004)
+  if (digitalRead(PIN_BTN_TEST) == LOW) {
+    if (ahora - ultimoTiempoBoton > DEBOUNCE_MS) {
+      ultimoTiempoBoton = ahora;
       const char* rfidSimulado = CODIGOS_RFID_PRUEBA[indiceRfidPrueba];
       indiceRfidPrueba = (indiceRfidPrueba + 1) % 4;
       ultimaCaravanaEnviada[0] = '\0';

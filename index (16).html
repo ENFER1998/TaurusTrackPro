@@ -50,7 +50,7 @@
       // Precalentar almacenamiento local CacheStorage con los scripts principales
       if ('caches' in window) {
         window.addEventListener('load', () =>{
-          caches.open('taurus-control-v18').then(cache =>{
+          caches.open('taurus-control-v19').then(cache =>{
             cache.addAll([
               location.href,
               'gemini-svg.png',
@@ -6856,13 +6856,26 @@ window.esCaravanaValida = function(car) {
             return kbd;
         };
 
+        window.estaBluetoothConectadoEnApp = function() {
+            return Boolean(window.iosModoHidActivo || (typeof bleDevice !== 'undefined' && bleDevice && bleDevice.gatt && bleDevice.gatt.connected));
+        };
+
+        window.ocultarTecladoTactilIos = function() {
+            const kbd = document.getElementById('taurus-ios-vkbd');
+            if (kbd) kbd.style.display = 'none';
+            if (document.body) document.body.style.paddingBottom = '';
+        };
+
         window.mostrarTecladoTactilParaInput = function(inp) {
             if (!inp || inp.readOnly || inp.disabled) return;
             const tipo = String(inp.type || 'text').toLowerCase();
             if (['checkbox', 'radio', 'file', 'button', 'submit', 'range', 'date', 'color', 'hidden'].includes(tipo)) return;
 
-            // Mostrar automáticamente en iOS o cuando se active el modo Bluetooth iOS
-            if (!window.esDispositivoIos() && !window.iosModoHidActivo) return;
+            // Mostrar EXCLUSIVAMENTE en iOS Y EXCLUSIVAMENTE cuando el lector Bluetooth está conectado/activo
+            if (!window.esDispositivoIos() || !window.estaBluetoothConectadoEnApp()) {
+                window.ocultarTecladoTactilIos();
+                return;
+            }
 
             window._vkbdTargetInput = inp;
             const kbd = window.crearTecladoTactilIos();
@@ -7017,6 +7030,9 @@ window.esCaravanaValida = function(car) {
         };
 
         window.marcarBluetoothHidActivo = function() {
+            if (window.esDispositivoIos()) {
+                window.iosModoHidActivo = true;
+            }
             const btn = document.getElementById('btn-conectar-ble');
             const lbl = document.getElementById('lbl-estado-bluetooth');
             if (bleDevice && bleDevice.gatt && bleDevice.gatt.connected) return;
@@ -7239,17 +7255,21 @@ window.esCaravanaValida = function(car) {
                 if (window.iosModoHidActivo) {
                     if (btn) btn.innerText = "Modo iOS Activo";
                     if (lbl) {
-                        lbl.innerText = "Escuchando: Taurus Track Pro (iOS Bluetooth)";
+                        lbl.innerText = "Conectado: Taurus Track Pro (iOS Bluetooth)";
                         lbl.style.color = "var(--exito)";
                     }
                     if (typeof window.mostrarToast === 'function') {
-                        window.mostrarToast("Modo Bluetooth iOS activo. Enlaza 'Taurus Track Pro' en Ajustes > Bluetooth de tu iPhone.");
+                        window.mostrarToast("Modo Bluetooth iOS activo (Teclado táctil Taurus habilitado).");
                     }
                 } else {
+                    window.ocultarTecladoTactilIos();
                     if (btn) btn.innerText = "Conectar Bastón / Balanza";
                     if (lbl) {
                         lbl.innerText = "Bluetooth: Desconectado";
                         lbl.style.color = "var(--muted)";
+                    }
+                    if (typeof window.mostrarToast === 'function') {
+                        window.mostrarToast("Modo Bluetooth iOS desactivado (Usando teclado normal del iPhone).");
                     }
                 }
                 return;
