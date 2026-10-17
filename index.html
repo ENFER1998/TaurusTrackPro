@@ -50,7 +50,7 @@
       // Precalentar almacenamiento local CacheStorage con los scripts principales
       if ('caches' in window) {
         window.addEventListener('load', () =>{
-          caches.open('taurus-control-v16').then(cache =>{
+          caches.open('taurus-control-v18').then(cache =>{
             cache.addAll([
               location.href,
               'gemini-svg.png',
@@ -6639,56 +6639,261 @@ window.esCaravanaValida = function(car) {
             window.finalizarVinculacionConRP(chip);
         };
 
-        window.enfocarTrampaHid = function() {
-            try {
-                let trap = document.getElementById('taurus-hid-trap');
-                if (!trap && document.body && typeof document.createElement === 'function') {
-                    trap = document.createElement('input');
-                    trap.type = 'text';
-                    trap.id = 'taurus-hid-trap';
-                    trap.setAttribute('inputmode', 'none');
-                    trap.setAttribute('autocomplete', 'off');
-                    trap.setAttribute('autocorrect', 'off');
-                    trap.setAttribute('autocapitalize', 'off');
-                    trap.setAttribute('spellcheck', 'false');
-                    trap.style.cssText = 'position:fixed; top:50%; left:0; width:1px; height:1px; opacity:0.01; border:none; padding:0; margin:0; background:transparent; color:transparent; outline:none; z-index:-1;';
-                    trap.addEventListener('input', function() {
-                        clearTimeout(window._timerTrapHid);
-                        const v = String(trap.value || '');
-                        if (v.includes('\n') || v.includes('\r')) {
-                            const limpia = v.trim();
-                            trap.value = '';
-                            if (limpia.length >= 2) {
-                                window.marcarBluetoothHidActivo();
-                                window.procesarDatoHardware(limpia);
-                            }
-                            return;
-                        }
-                        window._timerTrapHid = setTimeout(function() {
-                            const limpia = String(trap.value || '').trim();
-                            if (limpia.length >= 3) {
-                                trap.value = '';
-                                window.marcarBluetoothHidActivo();
-                                window.procesarDatoHardware(limpia);
-                            }
-                        }, 180);
-                    });
-                    document.body.appendChild(trap);
+        window.hayModalAbierto = function() {
+            const modales = document.querySelectorAll('.modal');
+            for (let i = 0; i < modales.length; i++) {
+                const m = modales[i];
+                if (!m.classList.contains('oculto') && m.style.display !== 'none') {
+                    return true;
                 }
-                const act = document.activeElement;
-                const enInputReal = act && act.id !== 'taurus-hid-trap' && (act.tagName === 'INPUT' || act.tagName === 'TEXTAREA' || act.tagName === 'SELECT');
-                if (trap && !enInputReal && typeof trap.focus === 'function') {
-                    trap.focus({ preventScroll: true });
-                }
-            } catch(e) {}
+            }
+            return false;
         };
+
+        // No robar jamás el foco con inputmode="none" en iPhone para no bloquear el teclado nativo de iOS.
+        // Safari en iOS recibe los eventos keydown del perfil Bluetooth HID directamente a nivel document.
+        window.enfocarTrampaHid = function() {
+            const trap = document.getElementById('taurus-hid-trap');
+            if (trap && trap.parentNode) {
+                trap.parentNode.removeChild(trap);
+            }
+        };
+
+        // =========================================================================
+        // TECLADO TÁCTIL INTEGRADO DE RESPALDO PARA iPHONE / iPAD CON BLUETOOTH HID
+        // (Cuando iOS oculta su teclado nativo al detectar un lector Bluetooth HID,
+        //  este teclado táctil emerge automáticamente al tocar cualquier campo)
+        // =========================================================================
+        window._vkbdTargetInput = null;
+        window._vkbdModoAlfa = false;
+        window._vkbdMinimizado = false;
+
+        window.esDispositivoIos = function() {
+            const ua = navigator.userAgent || navigator.vendor || '';
+            return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        };
+
+        window.crearTecladoTactilIos = function() {
+            let kbd = document.getElementById('taurus-ios-vkbd');
+            if (kbd) return kbd;
+
+            kbd = document.createElement('div');
+            kbd.id = 'taurus-ios-vkbd';
+            kbd.style.cssText = 'display:none; position:fixed; left:0; right:0; bottom:0; z-index:999999; background:rgba(18,24,38,0.98); border-top:2px solid var(--primario, #f59e0b); padding:8px 6px calc(10px + env(safe-area-inset-bottom, 0px)) 6px; box-shadow:0 -8px 28px rgba(0,0,0,0.65); user-select:none; -webkit-user-select:none; backdrop-filter:blur(10px);';
+
+            kbd.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; padding:0 4px;">
+                    <div style="display:flex; align-items:center; gap:6px;">
+                        <span style="font-size:0.75rem; font-weight:700; color:#f59e0b;">⌨️ Teclado Taurus iOS</span>
+                        <span id="taurus-vkbd-preview" style="font-size:0.8rem; font-weight:800; color:#fff; background:rgba(255,255,255,0.12); padding:2px 8px; border-radius:6px; max-width:150px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"></span>
+                    </div>
+                    <div style="display:flex; gap:6px;">
+                        <button type="button" data-vkbd-action="MODE" id="btn-vkbd-mode" style="background:#334155; color:#fff; border:1px solid #475569; border-radius:6px; padding:4px 10px; font-size:0.75rem; font-weight:700;">ABC</button>
+                        <button type="button" data-vkbd-action="HIDE" style="background:#1e293b; color:#94a3b8; border:1px solid #334155; border-radius:6px; padding:4px 10px; font-size:0.75rem; font-weight:700;">▼ Ocultar</button>
+                    </div>
+                </div>
+                <div id="taurus-vkbd-grid-num" style="display:grid; grid-template-columns:repeat(4, 1fr); gap:6px;">
+                    <button type="button" data-vkbd-key="1" class="vkbd-btn">1</button>
+                    <button type="button" data-vkbd-key="2" class="vkbd-btn">2</button>
+                    <button type="button" data-vkbd-key="3" class="vkbd-btn">3</button>
+                    <button type="button" data-vkbd-action="BACKSPACE" class="vkbd-btn" style="background:#475569; color:#f87171;">⌫</button>
+                    <button type="button" data-vkbd-key="4" class="vkbd-btn">4</button>
+                    <button type="button" data-vkbd-key="5" class="vkbd-btn">5</button>
+                    <button type="button" data-vkbd-key="6" class="vkbd-btn">6</button>
+                    <button type="button" data-vkbd-key="-" class="vkbd-btn" style="background:#334155;">-</button>
+                    <button type="button" data-vkbd-key="7" class="vkbd-btn">7</button>
+                    <button type="button" data-vkbd-key="8" class="vkbd-btn">8</button>
+                    <button type="button" data-vkbd-key="9" class="vkbd-btn">9</button>
+                    <button type="button" data-vkbd-key="." class="vkbd-btn" style="background:#334155;">.</button>
+                    <button type="button" data-vkbd-action="CLEAR" class="vkbd-btn" style="background:#334155; font-size:0.8rem; color:#cbd5e1;">Limpiar</button>
+                    <button type="button" data-vkbd-key="0" class="vkbd-btn">0</button>
+                    <button type="button" data-vkbd-action="ENTER" class="vkbd-btn" style="grid-column:span 2; background:#10b981; color:#052e16; font-weight:900;">✓ LISTO</button>
+                </div>
+                <div id="taurus-vkbd-grid-alpha" style="display:none; flex-direction:column; gap:5px;">
+                    <div style="display:grid; grid-template-columns:repeat(10, 1fr); gap:4px;">
+                        <button type="button" data-vkbd-key="1" class="vkbd-btn-sm">1</button>
+                        <button type="button" data-vkbd-key="2" class="vkbd-btn-sm">2</button>
+                        <button type="button" data-vkbd-key="3" class="vkbd-btn-sm">3</button>
+                        <button type="button" data-vkbd-key="4" class="vkbd-btn-sm">4</button>
+                        <button type="button" data-vkbd-key="5" class="vkbd-btn-sm">5</button>
+                        <button type="button" data-vkbd-key="6" class="vkbd-btn-sm">6</button>
+                        <button type="button" data-vkbd-key="7" class="vkbd-btn-sm">7</button>
+                        <button type="button" data-vkbd-key="8" class="vkbd-btn-sm">8</button>
+                        <button type="button" data-vkbd-key="9" class="vkbd-btn-sm">9</button>
+                        <button type="button" data-vkbd-key="0" class="vkbd-btn-sm">0</button>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(10, 1fr); gap:4px;">
+                        <button type="button" data-vkbd-key="Q" class="vkbd-btn-sm">Q</button>
+                        <button type="button" data-vkbd-key="W" class="vkbd-btn-sm">W</button>
+                        <button type="button" data-vkbd-key="E" class="vkbd-btn-sm">E</button>
+                        <button type="button" data-vkbd-key="R" class="vkbd-btn-sm">R</button>
+                        <button type="button" data-vkbd-key="T" class="vkbd-btn-sm">T</button>
+                        <button type="button" data-vkbd-key="Y" class="vkbd-btn-sm">Y</button>
+                        <button type="button" data-vkbd-key="U" class="vkbd-btn-sm">U</button>
+                        <button type="button" data-vkbd-key="I" class="vkbd-btn-sm">I</button>
+                        <button type="button" data-vkbd-key="O" class="vkbd-btn-sm">O</button>
+                        <button type="button" data-vkbd-key="P" class="vkbd-btn-sm">P</button>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(10, 1fr); gap:4px;">
+                        <button type="button" data-vkbd-key="A" class="vkbd-btn-sm">A</button>
+                        <button type="button" data-vkbd-key="S" class="vkbd-btn-sm">S</button>
+                        <button type="button" data-vkbd-key="D" class="vkbd-btn-sm">D</button>
+                        <button type="button" data-vkbd-key="F" class="vkbd-btn-sm">F</button>
+                        <button type="button" data-vkbd-key="G" class="vkbd-btn-sm">G</button>
+                        <button type="button" data-vkbd-key="H" class="vkbd-btn-sm">H</button>
+                        <button type="button" data-vkbd-key="J" class="vkbd-btn-sm">J</button>
+                        <button type="button" data-vkbd-key="K" class="vkbd-btn-sm">K</button>
+                        <button type="button" data-vkbd-key="L" class="vkbd-btn-sm">L</button>
+                        <button type="button" data-vkbd-key="-" class="vkbd-btn-sm">-</button>
+                    </div>
+                    <div style="display:grid; grid-template-columns:repeat(10, 1fr); gap:4px;">
+                        <button type="button" data-vkbd-key="Z" class="vkbd-btn-sm">Z</button>
+                        <button type="button" data-vkbd-key="X" class="vkbd-btn-sm">X</button>
+                        <button type="button" data-vkbd-key="C" class="vkbd-btn-sm">C</button>
+                        <button type="button" data-vkbd-key="V" class="vkbd-btn-sm">V</button>
+                        <button type="button" data-vkbd-key="B" class="vkbd-btn-sm">B</button>
+                        <button type="button" data-vkbd-key="N" class="vkbd-btn-sm">N</button>
+                        <button type="button" data-vkbd-key="M" class="vkbd-btn-sm">M</button>
+                        <button type="button" data-vkbd-key=" " class="vkbd-btn-sm">␣</button>
+                        <button type="button" data-vkbd-action="BACKSPACE" class="vkbd-btn-sm" style="background:#475569; color:#f87171;">⌫</button>
+                        <button type="button" data-vkbd-action="ENTER" class="vkbd-btn-sm" style="background:#10b981; color:#052e16; font-weight:900;">✓</button>
+                    </div>
+                </div>
+            `;
+
+            const styleEl = document.createElement('style');
+            styleEl.textContent = `
+                #taurus-ios-vkbd .vkbd-btn {
+                    background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:10px;
+                    padding:12px 0; font-size:1.2rem; font-weight:800; cursor:pointer;
+                    box-shadow:0 2px 4px rgba(0,0,0,0.3); touch-action:manipulation;
+                }
+                #taurus-ios-vkbd .vkbd-btn:active, #taurus-ios-vkbd .vkbd-btn-sm:active {
+                    transform:scale(0.95); background:#f59e0b !important; color:#000 !important;
+                }
+                #taurus-ios-vkbd .vkbd-btn-sm {
+                    background:#1e293b; color:#f8fafc; border:1px solid #334155; border-radius:7px;
+                    padding:10px 0; font-size:0.95rem; font-weight:700; cursor:pointer;
+                    touch-action:manipulation;
+                }
+            `;
+            document.head.appendChild(styleEl);
+
+            const handleVkbdPress = function(ev) {
+                const btn = ev.target.closest('button');
+                if (!btn) return;
+                ev.preventDefault();
+                ev.stopPropagation();
+
+                const inp = window._vkbdTargetInput;
+                const action = btn.getAttribute('data-vkbd-action');
+                const key = btn.getAttribute('data-vkbd-key');
+
+                if (action === 'HIDE') {
+                    kbd.style.display = 'none';
+                    document.body.style.paddingBottom = '';
+                    return;
+                }
+                if (action === 'MODE') {
+                    window._vkbdModoAlfa = !window._vkbdModoAlfa;
+                    const gNum = document.getElementById('taurus-vkbd-grid-num');
+                    const gAlpha = document.getElementById('taurus-vkbd-grid-alpha');
+                    const bMode = document.getElementById('btn-vkbd-mode');
+                    if (window._vkbdModoAlfa) {
+                        if (gNum) gNum.style.display = 'none';
+                        if (gAlpha) gAlpha.style.display = 'flex';
+                        if (bMode) bMode.innerText = '123';
+                    } else {
+                        if (gNum) gNum.style.display = 'grid';
+                        if (gAlpha) gAlpha.style.display = 'none';
+                        if (bMode) bMode.innerText = 'ABC';
+                    }
+                    return;
+                }
+
+                if (!inp) return;
+
+                // Permitir decimales en inputs numéricos de iOS convirtiéndolos a text decimal
+                if (inp.type === 'number') {
+                    try { inp.type = 'text'; inp.setAttribute('inputmode', 'decimal'); } catch(e) {}
+                }
+
+                let actual = String(inp.value || '');
+                if (action === 'BACKSPACE') {
+                    inp.value = actual.slice(0, -1);
+                } else if (action === 'CLEAR') {
+                    inp.value = '';
+                } else if (action === 'ENTER') {
+                    kbd.style.display = 'none';
+                    document.body.style.paddingBottom = '';
+                    if (inp.id === 'f-rfid-caravana' && typeof window.guardarVinculacionRFID === 'function') {
+                        window.guardarVinculacionRFID();
+                    } else if (inp.id === 'buscador-caravana' && typeof window.buscarCaravanaBtn === 'function') {
+                        window.buscarCaravanaBtn(inp.value);
+                    } else if ((inp.id === 'rm-caravana' || inp.id === 'rm-valor') && typeof window.ejecutarRafagaManual === 'function') {
+                        window.ejecutarRafagaManual();
+                    } else {
+                        try { inp.blur(); } catch(e) {}
+                    }
+                    return;
+                } else if (key !== null) {
+                    inp.value = actual + key;
+                }
+
+                const prev = document.getElementById('taurus-vkbd-preview');
+                if (prev) prev.innerText = inp.value || '(vacío)';
+
+                try {
+                    inp.dispatchEvent(new Event('input', { bubbles: true }));
+                    inp.dispatchEvent(new Event('change', { bubbles: true }));
+                } catch(e) {}
+            };
+
+            kbd.addEventListener('touchstart', handleVkbdPress, { passive: false });
+            kbd.addEventListener('mousedown', handleVkbdPress);
+
+            document.body.appendChild(kbd);
+            return kbd;
+        };
+
+        window.mostrarTecladoTactilParaInput = function(inp) {
+            if (!inp || inp.readOnly || inp.disabled) return;
+            const tipo = String(inp.type || 'text').toLowerCase();
+            if (['checkbox', 'radio', 'file', 'button', 'submit', 'range', 'date', 'color', 'hidden'].includes(tipo)) return;
+
+            // Mostrar automáticamente en iOS o cuando se active el modo Bluetooth iOS
+            if (!window.esDispositivoIos() && !window.iosModoHidActivo) return;
+
+            window._vkbdTargetInput = inp;
+            const kbd = window.crearTecladoTactilIos();
+            const prev = document.getElementById('taurus-vkbd-preview');
+            if (prev) prev.innerText = inp.value || '(vacío)';
+
+            kbd.style.display = 'block';
+            document.body.style.paddingBottom = '260px';
+            setTimeout(() => {
+                try { inp.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch(e) {}
+            }, 80);
+        };
+
+        document.addEventListener('focusin', function(ev) {
+            const t = ev.target;
+            if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) {
+                window.mostrarTecladoTactilParaInput(t);
+            }
+        });
 
         document.addEventListener('click', function(ev) {
             const t = ev.target;
             if (!t) return;
-            const tag = t.tagName;
-            if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
-                setTimeout(function() { window.enfocarTrampaHid(); }, 60);
+            if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA') {
+                window.mostrarTecladoTactilParaInput(t);
+                return;
+            }
+            const kbd = document.getElementById('taurus-ios-vkbd');
+            if (kbd && kbd.style.display === 'block' && !kbd.contains(t)) {
+                kbd.style.display = 'none';
+                document.body.style.paddingBottom = '';
             }
         });
 
@@ -6755,7 +6960,20 @@ window.esCaravanaValida = function(car) {
                 if (typeof window.mostrarToast === "function") {
                     window.mostrarToast(`Nuevo chip RFID ${limpio}: asígnale su Caravana (RP)`);
                 }
-                setTimeout(() => { if (inputVincular) inputVincular.focus(); }, 350);
+                if (inputVincular) {
+                    try { inputVincular.focus(); } catch(e) {}
+                    if (typeof window.mostrarTecladoTactilParaInput === "function") {
+                        window.mostrarTecladoTactilParaInput(inputVincular);
+                    }
+                }
+                setTimeout(() => {
+                    if (inputVincular) {
+                        try { inputVincular.focus(); } catch(e) {}
+                        if (typeof window.mostrarTecladoTactilParaInput === "function") {
+                            window.mostrarTecladoTactilParaInput(inputVincular);
+                        }
+                    }
+                }, 200);
             }
         };
 

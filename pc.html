@@ -6744,57 +6744,11 @@ window.cerrarModal = cerrarModal; window.toggleTema = toggleTema;
         };
 
         window.enfocarTrampaHid = function() {
-            try {
-                let trap = document.getElementById('taurus-hid-trap');
-                if (!trap && document.body && typeof document.createElement === 'function') {
-                    trap = document.createElement('input');
-                    trap.type = 'text';
-                    trap.id = 'taurus-hid-trap';
-                    trap.setAttribute('inputmode', 'none');
-                    trap.setAttribute('autocomplete', 'off');
-                    trap.setAttribute('autocorrect', 'off');
-                    trap.setAttribute('autocapitalize', 'off');
-                    trap.setAttribute('spellcheck', 'false');
-                    trap.style.cssText = 'position:fixed; top:50%; left:0; width:1px; height:1px; opacity:0.01; border:none; padding:0; margin:0; background:transparent; color:transparent; outline:none; z-index:-1;';
-                    trap.addEventListener('input', function() {
-                        clearTimeout(window._timerTrapHid);
-                        const v = String(trap.value || '');
-                        if (v.includes('\n') || v.includes('\r')) {
-                            const limpia = v.trim();
-                            trap.value = '';
-                            if (limpia.length >= 2) {
-                                window.marcarBluetoothHidActivo();
-                                window.procesarDatoHardware(limpia);
-                            }
-                            return;
-                        }
-                        window._timerTrapHid = setTimeout(function() {
-                            const limpia = String(trap.value || '').trim();
-                            if (limpia.length >= 3) {
-                                trap.value = '';
-                                window.marcarBluetoothHidActivo();
-                                window.procesarDatoHardware(limpia);
-                            }
-                        }, 180);
-                    });
-                    document.body.appendChild(trap);
-                }
-                const act = document.activeElement;
-                const enInputReal = act && act.id !== 'taurus-hid-trap' && (act.tagName === 'INPUT' || act.tagName === 'TEXTAREA' || act.tagName === 'SELECT');
-                if (trap && !enInputReal && typeof trap.focus === 'function') {
-                    trap.focus({ preventScroll: true });
-                }
-            } catch(e) {}
-        };
-
-        document.addEventListener('click', function(ev) {
-            const t = ev.target;
-            if (!t) return;
-            const tag = t.tagName;
-            if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
-                setTimeout(function() { window.enfocarTrampaHid(); }, 60);
+            const trap = document.getElementById('taurus-hid-trap');
+            if (trap && trap.parentNode) {
+                trap.parentNode.removeChild(trap);
             }
-        });
+        };
 
         window.recibirTagNFC = function(tagHex, pesoOpcional = null) {
             let limpio = String(tagHex || "").trim();
