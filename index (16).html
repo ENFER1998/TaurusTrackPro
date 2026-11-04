@@ -1160,6 +1160,7 @@
         <p style="color:var(--muted); font-size:14px; line-height:1.6; max-width:400px;">Nuestros servidores están recibiendo una actualización para mejorar Taurus Track Pro. La aplicación ha sido bloqueada temporalmente y tus datos están seguros.</p>
         <div class="spinner"></div>
         <p style="color:var(--secundario); font-size:12px; margin-top:15px; font-weight:bold;">Verificando conexión automáticamente...</p>
+        <button type="button" onclick="window.cerrarSesion()" style="margin-top:22px; padding:10px 18px; border-radius:8px; border:1px solid var(--borde); background:var(--superficie); color:var(--texto); font-size:12px; font-weight:bold; cursor:pointer;">Cerrar sesión / Ingresar como Administrador</button>
     </div>
 
     <!-- MODAL POP-UP AVISO GLOBAL -->
@@ -3230,12 +3231,13 @@ window.esCaravanaValida = function(car) {
                 }
 
                 let rol = userData ? (userData.rol || '') : '';
-                let esAdmin = (rol === 'SuperAdmin' || rol === 'Admin');
+                let esAdmin = (rol === 'SuperAdmin' || rol === 'Admin' || emailClean === 'enfer.ro.98@gmail.com');
 
                 if (esAdmin) {
                     // ==========================================
                     // SESIÓN ADMINISTRADOR MASTER AUTORIZADA
                     // ==========================================
+                    let pMant = document.getElementById('pantalla-mantenimiento'); if (pMant) pMant.classList.add('oculto');
                     let pLogin = document.getElementById('pantalla-login'); if (pLogin) pLogin.classList.add('oculto');
                     let pApp = document.getElementById('pantalla-app'); if (pApp) pApp.classList.add('oculto');
                     let pAdmin = document.getElementById('pantalla-admin'); if (pAdmin) pAdmin.classList.remove('oculto');
@@ -3285,6 +3287,7 @@ window.esCaravanaValida = function(car) {
                     );
                 }
             } else {
+                let pMant = document.getElementById('pantalla-mantenimiento'); if (pMant) pMant.classList.add('oculto');
                 let pLogin = document.getElementById('pantalla-login'); if (pLogin) pLogin.classList.remove('oculto');
                 let pApp = document.getElementById('pantalla-app'); if (pApp) pApp.classList.add('oculto');
                 let pAdmin = document.getElementById('pantalla-admin'); if (pAdmin) pAdmin.classList.add('oculto');
