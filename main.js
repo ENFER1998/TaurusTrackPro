@@ -2,7 +2,6 @@ const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
-// Habilitar Web Bluetooth y características experimentales de Chromium en Windows / Linux / macOS
 app.commandLine.appendSwitch('enable-web-bluetooth');
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
 app.commandLine.appendSwitch('enable-features', 'WebBluetooth,WebBluetoothNewPermissionsBackend');
@@ -41,21 +40,33 @@ function createWindow() {
     }
   });
 
-  // Confirmar automáticamente emparejamientos BLE si el sistema operativo lo solicita
   if (mainWindow.webContents.session && typeof mainWindow.webContents.session.setBluetoothPairingHandler === 'function') {
     mainWindow.webContents.session.setBluetoothPairingHandler((details, callback) => {
       callback({ confirmed: true });
     });
   }
 
-  // Selector inteligente de dispositivos Bluetooth BLE en Electron (Windows / Desktop)
+  if (mainWindow.webContents.session) {
+    mainWindow.webContents.session.on('will-download', (event, item) => {
+      const fileName = item.getFilename() || `Reporte_Taurus_${new Date().toISOString().slice(0, 10)}.pdf`;
+      const downloadsDir = app.getPath('downloads');
+      item.setSaveDialogOptions({
+        title: "Guardar Reporte Oficial Taurus",
+        defaultPath: path.join(downloadsDir, fileName),
+        filters: [
+          { name: 'Documentos PDF', extensions: ['pdf'] },
+          { name: 'Todos los archivos', extensions: ['*'] }
+        ]
+      });
+    });
+  }
+
   mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
     event.preventDefault();
     bleSelectCallback = callback;
 
     const lista = Array.isArray(deviceList) ? deviceList : [];
 
-    // 1. Prioridad máxima: encontrar "Taurus Track Pro" o periféricos ganaderos conocidos
     const dispositivoTaurus = lista.find((d) => {
       const nombre = String(d.deviceName || '').trim();
       return /taurus|track\s*pro|baston|balanza|rfid|esp32|tru[\s-]*test|allflex|uart/i.test(nombre);
@@ -68,14 +79,13 @@ function createWindow() {
       return;
     }
 
-    // 2. Si aún está escaneando, programar un timeout de 10 segundos para elegir el mejor candidato o cancelar limpio
     if (!bleScanTimeout) {
       bleScanTimeout = setTimeout(() => {
         if (typeof bleSelectCallback === 'function') {
           const cb = bleSelectCallback;
           bleSelectCallback = null;
           bleScanTimeout = null;
-          // Si solo hay un dispositivo con nombre visible en el rango, seleccionarlo; si no, cancelar para permitir reintento
+
           const conNombre = lista.find((d) => d.deviceName && !/^dispositivo desconocido|unknown/i.test(d.deviceName));
           if (conNombre) {
             try { cb(conNombre.deviceId); } catch (e) {}
@@ -113,19 +123,21 @@ ipcMain.handle('guardar-reporte-local', async (event, { base64Data, nombreSugeri
   try {
     if (!mainWindow) throw new Error("Ventana no disponible");
 
-    const nombreLimpio = path.basename(String(nombreSugerido || 'reporte-taurus')).replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+    const nombreLimpio = path.basename(String(nombreSugerido || 'reporte-taurus')).replace(/[^a-zA-Z0-9_\-\.]/g, '_').replace(/\.(pdf|xlsx|csv)$/i, '');
     const extPermitidas = ['pdf', 'xlsx', 'csv'];
     const extFinal = extPermitidas.includes(extension) ? extension : 'pdf';
+    const downloadsDir = app.getPath('downloads');
 
     const { canceled, filePath } = await dialog.showSaveDialog(mainWindow, {
       title: "Guardar Reporte Oficial Taurus",
-      defaultPath: `${nombreLimpio}.${extFinal}`,
+      defaultPath: path.join(downloadsDir, `${nombreLimpio}.${extFinal}`),
       filters: [{ name: extFinal.toUpperCase(), extensions: [extFinal] }]
     });
 
     if (canceled || !filePath) return { success: false, reason: 'canceled' };
 
-    const buffer = Buffer.from(base64Data, 'base64');
+    const cleanBase64 = String(base64Data || '').replace(/^data:[^;]+;base64,/, '');
+    const buffer = Buffer.from(cleanBase64, 'base64');
     await fs.promises.writeFile(filePath, buffer);
     return { success: true, path: filePath };
   } catch (err) {

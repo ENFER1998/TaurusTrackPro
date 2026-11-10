@@ -1,25 +1,3 @@
-/**
- * ============================================================================
- * TAURUS TRACK PRO - NODO 1: LECTOR RFID + BLUETOOTH BLE + ESP-NOW
- * ============================================================================
- * Placa objetivo: ESP32-C3 Super Mini
- * Nombre Bluetooth: "Taurus Track Pro"
- *
- * CONFIGURACIÓN PROBADA Y ESTABLE (WINDOWS ELECTRON, iOS SAFARI Y ANDROID):
- * 1. Servicio GATT Nordic UART (6E400001-...) con descriptor 0x2902 explícito
- *    y envío en fragmentos <= 18 bytes tras ventana de silencio RF de 40 ms.
- * 2. Servicio BLE HID Teclado (0x1812) de 1 solo reporte estándar (Report ID 1)
- *    que enlaza de inmediato tanto en iOS como en PC sin desbordar la tabla GATT.
- * 3. Pin 9 (GPIO 9 a GND / botón BOOT): Cicla entre los 4 códigos RFID fijos
- *    de prueba (982000123456001 al 982000123456004 y vuelve al 001).
- * 4. Funciona tanto en Modo Independiente (solo Lector RFID encendido) como en
- *    Modo Combinado (recibiendo el peso del segundo ESP32 por ESP-NOW).
- *
- * Configuración en Arduino IDE:
- * - Board: "ESP32C3 Dev Module" o "LOLIN C3 Mini"
- * - USB CDC On Boot: "Enabled"
- */
-
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
@@ -33,20 +11,17 @@
 #include <BLEHIDDevice.h>
 #include <HIDTypes.h>
 
-// ==================== PINES ESP32-C3 SUPER MINI ====================
-constexpr int PIN_LED_STATUS = 8;   // LED azul integrado (activo en LOW)
-constexpr int PIN_BTN_TEST   = 9;   // Botón BOOT integrado (GPIO 9 a GND)
-constexpr int PIN_RFID_RX    = 4;   // RX para módulo lector RFID UART (ej. WL-134A 134.2 kHz)
-constexpr int PIN_RFID_TX    = 5;   // TX para módulo lector RFID UART
+constexpr int PIN_LED_STATUS = 8;
+constexpr int PIN_BTN_TEST   = 9;
+constexpr int PIN_RFID_RX    = 4;
+constexpr int PIN_RFID_TX    = 5;
 
-// ==================== TIEMPOS DE DETECCIÓN AUTOMÁTICA ====================
 constexpr unsigned long TIEMPO_ESPERA_ACK_BALANZA_MS = 180;
 constexpr unsigned long TIEMPO_MAX_ESPERA_PESO_MS    = 20000;
 constexpr unsigned long VENTANA_HEARTBEAT_ACTIVO_MS  = 5000;
 constexpr unsigned long COOLDOWN_MISMA_CARAVANA_MS   = 2000;
 constexpr unsigned long DEBOUNCE_MS                  = 350;
 
-// ==================== CONFIGURACIÓN ESP-NOW ====================
 constexpr uint8_t ESPNOW_WIFI_CHANNEL = 1;
 uint8_t macBroadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
 
@@ -64,47 +39,45 @@ struct __attribute__((packed)) PaqueteGanado {
   uint32_t secuencia;
 };
 
-// ==================== CONFIGURACIÓN BLUETOOTH BLE ====================
 constexpr const char* BLE_DEVICE_NAME = "Taurus Track Pro";
 constexpr const char* SERVICE_UUID    = "6E400001-B5A3-F393-E0A9-E50E24DCCA9E";
 constexpr const char* CHAR_UUID_RX    = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
 constexpr const char* CHAR_UUID_TX    = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
 
-// Mapa HID estándar de 1 reporte (Report ID 1: Teclado) que enlaza sin fallos en iOS, Android y Windows
 static const uint8_t TAURUS_HID_REPORT_MAP[] = {
-  0x05, 0x01,       // Usage Page (Generic Desktop)
-  0x09, 0x06,       // Usage (Keyboard)
-  0xA1, 0x01,       // Collection (Application)
-  0x85, 0x01,       //   Report ID (1)
-  0x05, 0x07,       //   Usage Page (Key Codes)
-  0x19, 0xE0,       //   Usage Minimum (224)
-  0x29, 0xE7,       //   Usage Maximum (231)
-  0x15, 0x00,       //   Logical Minimum (0)
-  0x25, 0x01,       //   Logical Maximum (1)
-  0x75, 0x01,       //   Report Size (1)
-  0x95, 0x08,       //   Report Count (8)
-  0x81, 0x02,       //   Input (Data, Variable, Absolute) - Modifier byte
-  0x95, 0x01,       //   Report Count (1)
-  0x75, 0x08,       //   Report Size (8)
-  0x81, 0x01,       //   Input (Constant) - Reserved byte
-  0x95, 0x05,       //   Report Count (5)
-  0x75, 0x01,       //   Report Size (1)
-  0x05, 0x08,       //   Usage Page (LEDs)
-  0x19, 0x01,       //   Usage Minimum (1)
-  0x29, 0x05,       //   Usage Maximum (5)
-  0x91, 0x02,       //   Output (Data, Variable, Absolute) - LED report
-  0x95, 0x01,       //   Report Count (1)
-  0x75, 0x03,       //   Report Size (3)
-  0x91, 0x01,       //   Output (Constant) - LED padding
-  0x95, 0x06,       //   Report Count (6)
-  0x75, 0x08,       //   Report Size (8)
-  0x15, 0x00,       //   Logical Minimum (0)
-  0x25, 0x65,       //   Logical Maximum (101)
-  0x05, 0x07,       //   Usage Page (Key Codes)
-  0x19, 0x00,       //   Usage Minimum (0)
-  0x29, 0x65,       //   Usage Maximum (101)
-  0x81, 0x00,       //   Input (Data, Array) - Key array (6 bytes)
-  0xC0              // End Collection
+  0x05, 0x01,
+  0x09, 0x06,
+  0xA1, 0x01,
+  0x85, 0x01,
+  0x05, 0x07,
+  0x19, 0xE0,
+  0x29, 0xE7,
+  0x15, 0x00,
+  0x25, 0x01,
+  0x75, 0x01,
+  0x95, 0x08,
+  0x81, 0x02,
+  0x95, 0x01,
+  0x75, 0x08,
+  0x81, 0x01,
+  0x95, 0x05,
+  0x75, 0x01,
+  0x05, 0x08,
+  0x19, 0x01,
+  0x29, 0x05,
+  0x91, 0x02,
+  0x95, 0x01,
+  0x75, 0x03,
+  0x91, 0x01,
+  0x95, 0x06,
+  0x75, 0x08,
+  0x15, 0x00,
+  0x25, 0x65,
+  0x05, 0x07,
+  0x19, 0x00,
+  0x29, 0x65,
+  0x81, 0x00,
+  0xC0
 };
 
 BLEServer* pServer = nullptr;
@@ -117,7 +90,6 @@ volatile bool bleClienteConectado = false;
 bool bleClienteConectadoPrevio = false;
 volatile bool modoUartSolicitadoPorApp = false;
 
-// ==================== ESTADO DEL SISTEMA ====================
 char caravanaPendiente[24] = "";
 char ultimaCaravanaEnviada[24] = "";
 unsigned long tiempoUltimaCaravanaEnviada = 0;
@@ -138,7 +110,6 @@ PaqueteGanado paqueteRfidEnCurso;
 unsigned long ultimoTiempoBoton = 0;
 unsigned long ultimoDestelloBle = 0;
 
-// 4 códigos RFID fijos en ciclo (1 -> 2 -> 3 -> 4 -> 1...) para probar vinculación y reconocimiento de RP
 constexpr const char* CODIGOS_RFID_PRUEBA[4] = {
   "982000123456001",
   "982000123456002",
@@ -147,7 +118,6 @@ constexpr const char* CODIGOS_RFID_PRUEBA[4] = {
 };
 uint8_t indiceRfidPrueba = 0;
 
-// Buffers serie no bloqueantes
 char bufferUsb[64];
 size_t idxUsb = 0;
 char bufferRfidUart[64];
@@ -156,7 +126,6 @@ unsigned long ultimoByteRfidMs = 0;
 
 void registrarNuevaCaravana(const char* rawRfid);
 
-// ==================== CALLBACKS SERVIDOR BLE ====================
 class ServidorBleCallbacks : public BLEServerCallbacks {
   void onConnect(BLEServer* server) override {
     (void)server;
@@ -189,7 +158,6 @@ class RxUartCallbacks : public BLECharacteristicCallbacks {
   }
 };
 
-// ==================== ENVÍO HID TECLADO (PARA SAFARI EN iOS) ====================
 bool mapearCaracterAHid(char c, uint8_t& keycode, uint8_t& modifier) {
   modifier = 0x00;
   keycode = 0x00;
@@ -207,20 +175,20 @@ bool mapearCaracterAHid(char c, uint8_t& keycode, uint8_t& modifier) {
     return true;
   }
   if (c >= 'A' && c <= 'Z') {
-    modifier = 0x02; // Left Shift
+    modifier = 0x02;
     keycode = 0x04 + (c - 'A');
     return true;
   }
   if (c == ',') {
-    keycode = 0x36; // Coma
+    keycode = 0x36;
     return true;
   }
   if (c == '.') {
-    keycode = 0x37; // Punto
+    keycode = 0x37;
     return true;
   }
   if (c == ' ') {
-    keycode = 0x2C; // Espacio
+    keycode = 0x2C;
     return true;
   }
   if (c == '-') {
@@ -228,7 +196,7 @@ bool mapearCaracterAHid(char c, uint8_t& keycode, uint8_t& modifier) {
     return true;
   }
   if (c == '\n' || c == '\r') {
-    keycode = 0x28; // ENTER
+    keycode = 0x28;
     return true;
   }
   return false;
@@ -256,7 +224,7 @@ void enviarTextoPorHid(const char* trama) {
     char c = trama[i];
     if (c == '\r') continue;
     if (c == '\n') {
-      enviarTeclaHid(0x28, 0x00); // ENTER
+      enviarTeclaHid(0x28, 0x00);
       enterEnviado = true;
       continue;
     }
@@ -272,7 +240,6 @@ void enviarTextoPorHid(const char* trama) {
   }
 }
 
-// ==================== CALLBACKS ESP-NOW ====================
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
 void alEnviarEspNow(const wifi_tx_info_t* info, esp_now_send_status_t status) {
   (void)info;
@@ -312,12 +279,11 @@ void alRecibirEspNow(const uint8_t* mac, const uint8_t* datos, int longitud) {
   }
 }
 
-// ==================== FUNCIONES DE ENVÍO BLUETOOTH ====================
 void parpadearLed(int repeticiones, int duracionMs) {
   for (int i = 0; i < repeticiones; i++) {
-    digitalWrite(PIN_LED_STATUS, LOW);   // Encender (activo en LOW)
+    digitalWrite(PIN_LED_STATUS, LOW);
     delay(duracionMs);
-    digitalWrite(PIN_LED_STATUS, HIGH);  // Apagar
+    digitalWrite(PIN_LED_STATUS, HIGH);
     delay(duracionMs);
   }
 }
@@ -335,7 +301,6 @@ void transmitirTramaBle(const char* trama) {
 
   delay(40);
 
-  // 1. Envío por GATT UART (6E400003-...) en fragmentos <= 18 bytes
   if (pTxCharacteristic != nullptr) {
     size_t len = strlen(trama);
     size_t offset = 0;
@@ -351,7 +316,6 @@ void transmitirTramaBle(const char* trama) {
     Serial.println("[BLE UART] Notificación GATT enviada correctamente en 6E400003.");
   }
 
-  // 2. Envío por BLE HID Teclado (0x1812) para iOS Safari (si no está en modo exclusivo UART)
   if (!modoUartSolicitadoPorApp) {
     delay(25);
     enviarTextoPorHid(trama);
@@ -387,7 +351,6 @@ void enviarSoloPesoPorBluetooth(float pesoKg) {
   transmitirTramaBle(tramaBle);
 }
 
-// ==================== LÓGICA DE LECTURA Y LIMPIEZA DE CARAVANA ====================
 void limpiarTramaRfid(const char* entrada, char* salida, size_t maxLen) {
   size_t j = 0;
   for (size_t i = 0; entrada[i] != '\0' && j < maxLen - 1; i++) {
@@ -449,7 +412,6 @@ void registrarNuevaCaravana(const char* rawRfid) {
   esp_now_send(macBroadcast, (uint8_t*)&paqueteRfidEnCurso, sizeof(paqueteRfidEnCurso));
 }
 
-// ==================== INICIALIZACIÓN BLE & ESP-NOW ====================
 void renovarMacParaEvitarCacheGatt() {
   uint8_t macBase[6] = {0};
   esp_efuse_mac_get_default(macBase);
@@ -472,7 +434,6 @@ void inicializarBle() {
   pServer = BLEDevice::createServer();
   pServer->setCallbacks(new ServidorBleCallbacks());
 
-  // 1. Servicio Nordic UART (6E400001-...) registrado primero con `new BLE2902()`
   BLEService* pUartService = pServer->createService(BLEUUID(SERVICE_UUID), 30, 0);
 
   pTxCharacteristic = pUartService->createCharacteristic(
@@ -489,7 +450,6 @@ void inicializarBle() {
 
   pUartService->start();
 
-  // 2. Servicio HID (0x1812) de 1 reporte estándar (Teclado) para iOS Safari
   pHidDevice = new BLEHIDDevice(pServer);
   pHidInputReport = pHidDevice->inputReport(1);
   pHidOutputReport = pHidDevice->outputReport(1);
@@ -552,7 +512,6 @@ void inicializarEspNow() {
   }
 }
 
-// ==================== LECTURA SERIE NO BLOQUEANTE ====================
 void procesarEntradaUsbNoBloqueante() {
   while (Serial.available() > 0) {
     char c = (char)Serial.read();
@@ -595,7 +554,6 @@ void procesarEntradaRfidUartNoBloqueante() {
   }
 }
 
-// ==================== SETUP & LOOP ====================
 void setup() {
   pinMode(PIN_LED_STATUS, OUTPUT);
   digitalWrite(PIN_LED_STATUS, HIGH);
@@ -630,7 +588,6 @@ void loop() {
     parpadearLed(2, 120);
   }
 
-  // 1. PRUEBA CON PIN 9 (GPIO 9 a GND): Cicla entre los 4 códigos RFID fijos (001 al 004)
   if (digitalRead(PIN_BTN_TEST) == LOW) {
     if (ahora - ultimoTiempoBoton > DEBOUNCE_MS) {
       ultimoTiempoBoton = ahora;
@@ -641,13 +598,10 @@ void loop() {
     }
   }
 
-  // 2. PRUEBA POR MONITOR SERIE USB (No bloqueante)
   procesarEntradaUsbNoBloqueante();
 
-  // 3. LECTURA DESDE MÓDULO RFID FÍSICO POR UART1 (GPIO 4/5, No bloqueante)
   procesarEntradaRfidUartNoBloqueante();
 
-  // 4. VERIFICAR SI LA BALANZA RESPONDIÓ O SI ESTÁ APAGADA (MODO INDEPENDIENTE)
   if (esperandoAckBalanza) {
     bool balanzaConHeartbeatReciente = balanzaVistaAlgunaVez && ((ahora - ultimoHeartbeatBalanza) <= VENTANA_HEARTBEAT_ACTIVO_MS);
 
@@ -674,7 +628,6 @@ void loop() {
     }
   }
 
-  // 5. PROCESAR PESO RECIBIDO DESDE LA BALANZA POR ESP-NOW
   if (nuevoPesoRecibido) {
     PaqueteGanado paqueteLocal;
     noInterrupts();
@@ -705,7 +658,6 @@ void loop() {
     }
   }
 
-  // 6. TIMEOUT DE SEGURIDAD SI EL ANIMAL SALE DEL BRETE SIN PESARSE
   if (esperandoPesaje && (ahora - tiempoLecturaRfid >= TIEMPO_MAX_ESPERA_PESO_MS)) {
     Serial.println("[TIMEOUT PESAJE] No se recibió peso en 20s. Enviando solo RFID...");
     enviarSoloRfidPorBluetooth(caravanaPendiente);

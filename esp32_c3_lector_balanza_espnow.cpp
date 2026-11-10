@@ -1,24 +1,3 @@
-/**
- * ============================================================================
- * TAURUS TRACK PRO - NODO 2: LECTOR DE BALANZA + ESP-NOW DE ALTA FIABILIDAD
- * ============================================================================
- * Placa objetivo: ESP32-C3 Super Mini
- *
- * Características principales:
- * 1. Respuesta inmediata de ACK en ráfaga (x2) ante consulta del Lector RFID
- *    para superar cualquier colisión RF con el Bluetooth del Nodo 1.
- * 2. Envío de Peso Estable en ráfaga (x3 con control de secuencia) hacia el
- *    Nodo 1 para garantizar entrega 100% confiable en manga/brete.
- * 3. Lectura serie RS232/UART1 (GPIO 4/5) y USB totalmente NO BLOQUEANTE con
- *    estabilización inteligente para cabezales de balanza continuos o por disparo.
- * 4. Funciona tanto en modo combinado (asociado a la caravana recibida del Nodo 1)
- *    como en pesaje directo (envía el peso al Nodo 1 aunque no se haya leído RFID).
- *
- * Configuración en Arduino IDE:
- * - Board: "ESP32C3 Dev Module" o "LOLIN C3 Mini"
- * - USB CDC On Boot: "Enabled"
- */
-
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
@@ -26,13 +5,11 @@
 #include <esp_arduino_version.h>
 #include <math.h>
 
-// ==================== PINES ESP32-C3 SUPER MINI ====================
-constexpr int PIN_LED_STATUS  = 8;  // LED azul integrado (activo en LOW)
-constexpr int PIN_BTN_TEST    = 9;  // Botón BOOT integrado para simular un pesaje
-constexpr int PIN_BALANZA_RX  = 4;  // RX para cabezal de balanza RS232/UART
-constexpr int PIN_BALANZA_TX  = 5;  // TX para cabezal de balanza RS232/UART
+constexpr int PIN_LED_STATUS  = 8;
+constexpr int PIN_BTN_TEST    = 9;
+constexpr int PIN_BALANZA_RX  = 4;
+constexpr int PIN_BALANZA_TX  = 5;
 
-// ==================== CONFIGURACIÓN ESP-NOW ====================
 constexpr uint8_t ESPNOW_WIFI_CHANNEL = 1;
 constexpr unsigned long INTERVALO_HEARTBEAT_MS = 1800;
 
@@ -52,7 +29,6 @@ struct __attribute__((packed)) PaqueteGanado {
   uint32_t secuencia;
 };
 
-// ==================== ESTADO DEL SISTEMA ====================
 volatile bool nuevaCaravanaEnBrete = false;
 PaqueteGanado ultimoPaqueteRfid;
 char caravanaActual[24] = "";
@@ -63,7 +39,6 @@ unsigned long ultimoTiempoBoton = 0;
 unsigned long ultimoTiempoHeartbeat = 0;
 constexpr unsigned long DEBOUNCE_MS = 350;
 
-// Buffers no bloqueantes y filtro de estabilización para cabezal físico RS232
 char bufferUsb[64];
 size_t idxUsb = 0;
 char bufferBalanza[64];
@@ -76,7 +51,6 @@ bool esperandoConfirmarDisparoUnico = false;
 float ultimoPesoDisparo = 0.0f;
 unsigned long tiempoUltimoPesoEnviadoSerie = 0;
 
-// ==================== CALLBACKS ESP-NOW ====================
 #if ESP_ARDUINO_VERSION >= ESP_ARDUINO_VERSION_VAL(3, 0, 0)
 void alEnviarEspNow(const wifi_tx_info_t* info, esp_now_send_status_t status) {
   (void)info;
@@ -109,7 +83,6 @@ void alRecibirEspNow(const uint8_t* mac, const uint8_t* datos, int longitud) {
   }
 }
 
-// ==================== FUNCIONES AUXILIARES ====================
 void parpadearLed(int repeticiones, int duracionMs) {
   for (int i = 0; i < repeticiones; i++) {
     digitalWrite(PIN_LED_STATUS, LOW);
@@ -126,7 +99,6 @@ void confirmarBalanzaOnline(const char* rfidRecibido, uint32_t secuencia) {
   paqueteAck.pesoKg = 0.0f;
   paqueteAck.secuencia = secuencia;
 
-  // Doble envío separado por 12 ms para asegurar recepción frente a coexistencia BLE en Nodo 1
   esp_now_send(macLectorRfidPeer, (uint8_t*)&paqueteAck, sizeof(paqueteAck));
   delay(12);
   esp_now_send(macLectorRfidPeer, (uint8_t*)&paqueteAck, sizeof(paqueteAck));
@@ -181,7 +153,6 @@ void enviarPesoAlRfid(float pesoKg) {
     Serial.println(" kg (Modo Solo Peso)");
   }
 
-  // Envío redundante x3 con el mismo número de secuencia (Nodo 1 filtra duplicados)
   for (int i = 0; i < 3; i++) {
     esp_now_send(macLectorRfidPeer, (uint8_t*)&paquetePeso, sizeof(paquetePeso));
     if (i < 2) delay(15);
@@ -197,7 +168,6 @@ void procesarTramaCabezalBalanza(const String& tramaRaw) {
   String upper = tramaRaw;
   upper.toUpperCase();
 
-  // Ignorar tramas explícitamente marcadas como inestables por el cabezal (US = Unstable, MOTION)
   if (upper.indexOf("US,") >= 0 || upper.indexOf("MOTION") >= 0) {
     conteoLecturasEstables = 0;
     esperandoConfirmarDisparoUnico = false;
@@ -207,26 +177,22 @@ void procesarTramaCabezalBalanza(const String& tramaRaw) {
   float peso = extraerNumeroDeTrama(tramaRaw);
   unsigned long ahora = millis();
 
-  // Si la plataforma se vacía (< 5 kg), resetear bloqueo para el siguiente animal
   if (peso < 5.0f) {
     conteoLecturasEstables = 0;
     esperandoConfirmarDisparoUnico = false;
     return;
   }
 
-  // Cooldown para no reenviar en bucle continuo al mismo animal parado sobre la plataforma
   if (strlen(caravanaActual) == 0 && (ahora - tiempoUltimoPesoEnviadoSerie < 4000)) {
     return;
   }
 
-  // Si el cabezal envía la etiqueta explícita de estabilidad "ST," (ej. Toledo/Ohaus/Tru-Test)
   if (upper.indexOf("ST,") >= 0) {
     tiempoUltimoPesoEnviadoSerie = ahora;
     enviarPesoAlRfid(peso);
     return;
   }
 
-  // Si es una ráfaga continua del cabezal (tramas cada < 300 ms), exigir 3 lecturas iguales (±1.0 kg)
   if (ahora - tiempoUltimaTramaBalanza < 300) {
     esperandoConfirmarDisparoUnico = false;
     if (conteoLecturasEstables == 0) {
@@ -248,7 +214,7 @@ void procesarTramaCabezalBalanza(const String& tramaRaw) {
       }
     }
   } else {
-    // Primera trama aislada: puede ser un cabezal de disparo único (botón PRINT) o el inicio de un flujo
+
     lecturasRecientes[0] = peso;
     conteoLecturasEstables = 1;
     ultimoPesoDisparo = peso;
@@ -287,7 +253,6 @@ void inicializarEspNow() {
   }
 }
 
-// ==================== SETUP & LOOP ====================
 void setup() {
   pinMode(PIN_LED_STATUS, OUTPUT);
   digitalWrite(PIN_LED_STATUS, HIGH);
@@ -307,7 +272,6 @@ void setup() {
 void loop() {
   unsigned long ahora = millis();
 
-  // 1. RECEPCIÓN DE CARAVANA DESDE EL NODO 1 (LECTOR RFID)
   if (nuevaCaravanaEnBrete) {
     PaqueteGanado paqueteLocal;
     noInterrupts();
@@ -315,7 +279,6 @@ void loop() {
     nuevaCaravanaEnBrete = false;
     interrupts();
 
-    // Siempre enviar ACK inmediato por si el primer ACK colisionó
     confirmarBalanzaOnline(paqueteLocal.rfid, paqueteLocal.secuencia);
 
     if (paqueteLocal.secuencia != ultimaSecuenciaRfidRecibida || strcmp(caravanaActual, paqueteLocal.rfid) != 0) {
@@ -333,13 +296,11 @@ void loop() {
     }
   }
 
-  // 2. HEARTBEAT PERIÓDICO PARA QUE EL NODO 1 SEPA QUE LA BALANZA ESTÁ ENCENDIDA
   if (ahora - ultimoTiempoHeartbeat >= INTERVALO_HEARTBEAT_MS) {
     ultimoTiempoHeartbeat = ahora;
     enviarHeartbeatBalanza();
   }
 
-  // 3. PRUEBA CON BOTÓN BOOT (GPIO 9): Simula un pesaje inmediato
   if (digitalRead(PIN_BTN_TEST) == LOW) {
     if (ahora - ultimoTiempoBoton > DEBOUNCE_MS) {
       ultimoTiempoBoton = ahora;
@@ -348,7 +309,6 @@ void loop() {
     }
   }
 
-  // 4. PRUEBA POR MONITOR SERIE USB (No bloqueante, envío inmediato)
   while (Serial.available() > 0) {
     char c = (char)Serial.read();
     if (c == '\n' || c == '\r') {
@@ -363,7 +323,6 @@ void loop() {
     }
   }
 
-  // 5. LECTURA DESDE CABEZAL DE BALANZA FÍSICO POR UART1 (GPIO 4/5, No bloqueante)
   while (Serial1.available() > 0) {
     char c = (char)Serial1.read();
     if (c == '\n' || c == '\r' || c == 0x03) {
@@ -377,7 +336,6 @@ void loop() {
     }
   }
 
-  // Si el cabezal físico envió un único disparo (modo botón PRINT) y no llegaron más tramas en 350 ms
   if (esperandoConfirmarDisparoUnico && (ahora - tiempoUltimaTramaBalanza >= 350)) {
     esperandoConfirmarDisparoUnico = false;
     if (ultimoPesoDisparo >= 5.0f) {
@@ -386,6 +344,5 @@ void loop() {
     }
   }
 
-  // LED azul fijo cuando hay una caravana en el brete esperando su peso
   digitalWrite(PIN_LED_STATUS, (strlen(caravanaActual) > 0) ? LOW : HIGH);
 }
